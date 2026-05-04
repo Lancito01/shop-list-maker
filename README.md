@@ -1,10 +1,10 @@
-# Shopping List Maker
+# Finance Helper
 
-A simple shopping list web app built with **Next.js**, **Google OAuth (NextAuth)**, and **Postgres via Vercel-managed Neon**.
+A simple finance helper web app built with **Next.js**, **Google OAuth (NextAuth)**, and **Postgres via Vercel-managed Neon**.
 
 ## Features
 
-- Private per-user shopping lists (Google sign-in)
+- Private lists (Google sign-in)
 - Add, edit, and remove list items
 - Track item amount/quantity and unit price
 - Dynamic per-item subtotals and full-list totals
