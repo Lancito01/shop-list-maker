@@ -348,8 +348,8 @@ export function ShoppingListApp() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
-              <p className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
-                Total: {formatCurrency(listTotal)}
+              <p className={`rounded-full border px-3 py-1 text-sm font-semibold ${listTotal < 0 ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200" : "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"}`}>
+                {listTotal < 0 ? `Net Received: ${formatCurrency(Math.abs(listTotal))}` : `Total: ${formatCurrency(listTotal)}`}
               </p>
             </div>
 
@@ -382,8 +382,7 @@ export function ShoppingListApp() {
                     unitPrice: event.target.value,
                   }))
                 }
-                inputMode="decimal"
-                placeholder="Unit price"
+                placeholder="Unit price (- for income)"
                 className="rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
               />
               <button
@@ -420,9 +419,13 @@ export function ShoppingListApp() {
                     const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
                     const isSaving = Boolean(savingItems[item.id]);
                     const isDeleting = Boolean(deletingItems[item.id]);
+                    const isIncome = toNumber(item.unitPrice) < 0;
 
                     return (
-                      <tr key={item.id} className="border-b border-white/5">
+                      <tr
+                        key={item.id}
+                        className={`border-b ${isIncome ? "border-emerald-400/20 bg-emerald-500/5" : "border-white/5"}`}
+                      >
                         <td className="py-2 pr-3">
                           <input
                             value={item.name}
@@ -457,11 +460,10 @@ export function ShoppingListApp() {
                                 unitPrice: event.target.value,
                               }))
                             }
-                            inputMode="decimal"
                             className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-1 text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
                           />
                         </td>
-                        <td className="py-2 pr-3 font-medium text-zinc-100">
+                        <td className={`py-2 pr-3 font-medium ${isIncome ? "text-emerald-300" : "text-zinc-100"}`}>
                           {formatCurrency(subtotal)}
                         </td>
                         <td className="py-2">
