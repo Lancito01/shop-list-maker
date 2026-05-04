@@ -527,10 +527,8 @@ export function ShoppingListApp() {
                               const abs = neg
                                 ? (current.unitPrice?.slice(1) ?? "")
                                 : (current.unitPrice ?? "");
-                              return {
-                                ...current,
-                                unitPrice: neg ? abs : abs ? `-${abs}` : abs,
-                              };
+                              const nextPrice = neg ? abs : abs ? `-${abs}` : "";
+                              return { ...current, unitPrice: nextPrice };
                             })
                           }
                           title={isNeg ? "Currently: income (−). Click to switch to expense (+)." : "Currently: expense (+). Click to switch to income (−)."}
@@ -548,10 +546,8 @@ export function ShoppingListApp() {
                             updateItemInLocalState(item.id, (current) => {
                               const neg = current.unitPrice?.startsWith("-") ?? false;
                               const val = event.target.value;
-                              return {
-                                ...current,
-                                unitPrice: neg && val ? `-${val}` : val,
-                              };
+                              const nextPrice = val === "" ? "" : neg ? `-${val}` : val;
+                              return { ...current, unitPrice: nextPrice };
                             })
                           }
                           inputMode="decimal"
