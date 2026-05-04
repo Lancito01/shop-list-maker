@@ -482,11 +482,11 @@ export function ShoppingListApp() {
                 return (
                   <div
                     key={item.id}
-                    className={`rounded-xl border p-3 space-y-2 ${
+                    className={`overflow-hidden rounded-xl border p-3 space-y-2 ${
                       isTbd
                         ? "border-amber-400/30 bg-amber-500/5"
                         : isNeg
-                          ? "border-emerald-400/20 bg-emerald-500/5"
+                          ? "border-emerald-400/40 bg-emerald-500/15"
                           : "border-white/10 bg-zinc-950/40"
                     }`}
                   >
