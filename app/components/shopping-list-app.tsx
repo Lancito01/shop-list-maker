@@ -279,31 +279,31 @@ export function ShoppingListApp() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-      <aside className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold text-zinc-900">Your Lists</h2>
+    <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+      <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
+        <h2 className="text-lg font-semibold text-zinc-100">Your Lists</h2>
 
         <div className="mt-3 flex gap-2">
           <input
             value={newListName}
             onChange={(event) => setNewListName(event.target.value)}
             placeholder="New list name"
-            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none"
+            className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
           />
           <button
             type="button"
             onClick={() => void createList()}
             disabled={creatingList}
-            className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Add
           </button>
         </div>
 
         <div className="mt-4 space-y-2">
-          {loadingLists && <p className="text-sm text-zinc-500">Loading lists...</p>}
+          {loadingLists && <p className="text-sm text-zinc-400">Loading lists...</p>}
           {!loadingLists && lists.length === 0 && (
-            <p className="text-sm text-zinc-500">Create your first shopping list.</p>
+            <p className="text-sm text-zinc-400">Create your first shopping list.</p>
           )}
           {lists.map((list) => {
             const active = list.id === selectedListId;
@@ -312,14 +312,14 @@ export function ShoppingListApp() {
                 key={list.id}
                 className={`flex items-center justify-between rounded-md border px-3 py-2 ${
                   active
-                    ? "border-zinc-900 bg-zinc-100"
-                    : "border-zinc-200 bg-white hover:bg-zinc-50"
+                    ? "border-cyan-400/50 bg-zinc-800/80 shadow-lg shadow-cyan-950/30"
+                    : "border-white/10 bg-zinc-900/70 hover:bg-zinc-800/80"
                 }`}
               >
                 <button
                   type="button"
                   onClick={() => setSelectedListId(list.id)}
-                  className="truncate text-left text-sm font-medium text-zinc-900"
+                  className="truncate text-left text-sm font-medium text-zinc-100"
                 >
                   {list.name}
                 </button>
@@ -327,7 +327,7 @@ export function ShoppingListApp() {
                   type="button"
                   onClick={() => void removeList(list.id)}
                   disabled={deletingLists[list.id]}
-                  className="rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Delete
                 </button>
@@ -337,9 +337,9 @@ export function ShoppingListApp() {
         </div>
       </aside>
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+      <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
         {!selectedList && (
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-400">
             Select or create a list to start adding items.
           </p>
         )}
@@ -347,8 +347,8 @@ export function ShoppingListApp() {
         {selectedList && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold text-zinc-900">{selectedList.name}</h2>
-              <p className="text-sm font-semibold text-zinc-700">
+              <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
+              <p className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300">
                 Total: {formatCurrency(listTotal)}
               </p>
             </div>
@@ -360,7 +360,7 @@ export function ShoppingListApp() {
                   setNewItem((current) => ({ ...current, name: event.target.value }))
                 }
                 placeholder="Item name"
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none"
+                className="rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
               />
               <input
                 value={newItem.quantity}
@@ -372,7 +372,7 @@ export function ShoppingListApp() {
                 }
                 inputMode="decimal"
                 placeholder="Qty"
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none"
+                className="rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
               />
               <input
                 value={newItem.unitPrice}
@@ -384,13 +384,13 @@ export function ShoppingListApp() {
                 }
                 inputMode="decimal"
                 placeholder="Unit price"
-                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none"
+                className="rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
               />
               <button
                 type="button"
                 onClick={() => void addItem()}
                 disabled={creatingItem}
-                className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Add Item
               </button>
@@ -399,7 +399,7 @@ export function ShoppingListApp() {
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-200 text-left text-zinc-600">
+                  <tr className="border-b border-white/10 text-left text-zinc-400">
                     <th className="py-2">Item</th>
                     <th className="py-2">Amount</th>
                     <th className="py-2">Unit Price</th>
@@ -410,7 +410,7 @@ export function ShoppingListApp() {
                 <tbody>
                   {selectedList.items.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-4 text-center text-zinc-500">
+                      <td colSpan={5} className="py-4 text-center text-zinc-400">
                         No items yet. Add your first item above.
                       </td>
                     </tr>
@@ -422,7 +422,7 @@ export function ShoppingListApp() {
                     const isDeleting = Boolean(deletingItems[item.id]);
 
                     return (
-                      <tr key={item.id} className="border-b border-zinc-100">
+                      <tr key={item.id} className="border-b border-white/5">
                         <td className="py-2 pr-3">
                           <input
                             value={item.name}
@@ -432,7 +432,7 @@ export function ShoppingListApp() {
                                 name: event.target.value,
                               }))
                             }
-                            className="w-full rounded-md border border-zinc-300 px-2 py-1 text-zinc-900 focus:border-zinc-500 focus:outline-none"
+                            className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-1 text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
                           />
                         </td>
                         <td className="py-2 pr-3">
@@ -445,7 +445,7 @@ export function ShoppingListApp() {
                               }))
                             }
                             inputMode="decimal"
-                            className="w-full rounded-md border border-zinc-300 px-2 py-1 text-zinc-900 focus:border-zinc-500 focus:outline-none"
+                            className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-1 text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
                           />
                         </td>
                         <td className="py-2 pr-3">
@@ -458,10 +458,10 @@ export function ShoppingListApp() {
                               }))
                             }
                             inputMode="decimal"
-                            className="w-full rounded-md border border-zinc-300 px-2 py-1 text-zinc-900 focus:border-zinc-500 focus:outline-none"
+                            className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-1 text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
                           />
                         </td>
-                        <td className="py-2 pr-3 font-medium text-zinc-800">
+                        <td className="py-2 pr-3 font-medium text-zinc-100">
                           {formatCurrency(subtotal)}
                         </td>
                         <td className="py-2">
@@ -470,7 +470,7 @@ export function ShoppingListApp() {
                               type="button"
                               onClick={() => void saveItem(item)}
                               disabled={isSaving}
-                              className="rounded border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-lg border border-white/20 bg-zinc-800/70 px-2 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               Save
                             </button>
@@ -478,7 +478,7 @@ export function ShoppingListApp() {
                               type="button"
                               onClick={() => void removeItem(item.id)}
                               disabled={isDeleting}
-                              className="rounded border border-red-300 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               Remove
                             </button>
@@ -494,7 +494,7 @@ export function ShoppingListApp() {
         )}
 
         {errorMessage && (
-          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="mt-4 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
             {errorMessage}
           </p>
         )}

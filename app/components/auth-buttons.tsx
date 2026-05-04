@@ -7,7 +7,7 @@ export function SignInButton() {
     <button
       type="button"
       onClick={() => void signIn("google", { callbackUrl: "/" })}
-      className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+      className="rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/40 transition hover:brightness-110"
     >
       Sign in with Google
     </button>
@@ -19,7 +19,7 @@ export function SignOutButton() {
     <button
       type="button"
       onClick={() => void signOut({ callbackUrl: "/" })}
-      className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
+      className="rounded-xl border border-white/20 bg-zinc-900/50 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800/70"
     >
       Sign out
     </button>

@@ -12,10 +12,12 @@ export default async function Home() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col p-4 md:p-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Shopping List Maker</h1>
-          <p className="text-sm text-zinc-600">
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-100">
+            Shopping List Maker
+          </h1>
+          <p className="text-sm text-zinc-400">
             Build lists, track amounts and prices, and keep totals in sync.
           </p>
         </div>
@@ -24,11 +26,11 @@ export default async function Home() {
 
       {!isAuthenticated && (
         <main className="flex flex-1 items-center justify-center">
-          <div className="max-w-lg rounded-xl border border-zinc-200 bg-white p-8 text-center shadow-sm">
-            <h2 className="text-xl font-semibold text-zinc-900">
+          <div className="max-w-lg rounded-2xl border border-white/10 bg-zinc-900/70 p-8 text-center shadow-2xl shadow-black/30 backdrop-blur">
+            <h2 className="text-xl font-semibold text-zinc-100">
               Sign in to manage your shopping lists
             </h2>
-            <p className="mt-2 text-sm text-zinc-600">
+            <p className="mt-2 text-sm text-zinc-400">
               Your data is private to your account and stored in a Vercel-managed
               Postgres database.
             </p>
@@ -41,9 +43,9 @@ export default async function Home() {
 
       {isAuthenticated && (
         <main className="flex-1">
-          <div className="mb-4 rounded-md border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+          <div className="mb-4 rounded-xl border border-white/10 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300 backdrop-blur">
             Signed in as{" "}
-            <span className="font-semibold text-zinc-900">
+            <span className="font-semibold text-zinc-100">
               {session?.user?.email}
             </span>
           </div>
