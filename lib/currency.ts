@@ -5,7 +5,8 @@ const usdFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
-export function toNumber(value: string): number {
+export function toNumber(value: string | null | undefined): number {
+  if (value == null) return 0;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }

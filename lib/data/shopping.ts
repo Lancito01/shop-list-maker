@@ -8,7 +8,7 @@ export type ShoppingItemRecord = {
   listId: string;
   name: string;
   quantity: string;
-  unitPrice: string;
+  unitPrice: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -35,7 +35,7 @@ function mapItemRow(row: typeof shoppingItems.$inferSelect): ShoppingItemRecord 
     listId: row.listId,
     name: row.name,
     quantity: String(row.quantity),
-    unitPrice: String(row.unitPrice),
+    unitPrice: row.unitPrice != null ? String(row.unitPrice) : null,
     createdAt: toIsoString(row.createdAt),
     updatedAt: toIsoString(row.updatedAt),
   };
@@ -129,7 +129,7 @@ export async function createItem(
     listId: string;
     name: string;
     quantity: string;
-    unitPrice: string;
+    unitPrice?: string;
   },
 ): Promise<ShoppingItemRecord | null> {
   const db = getDb();
@@ -145,7 +145,7 @@ export async function createItem(
       listId: input.listId,
       name: input.name,
       quantity: input.quantity,
-      unitPrice: input.unitPrice,
+      unitPrice: input.unitPrice ?? null,
       updatedAt: now,
     })
     .returning();
@@ -164,7 +164,7 @@ export async function updateItem(
   input: {
     name: string;
     quantity: string;
-    unitPrice: string;
+    unitPrice?: string;
   },
 ): Promise<ShoppingItemRecord | null> {
   const db = getDb();
@@ -188,7 +188,7 @@ export async function updateItem(
     .set({
       name: input.name,
       quantity: input.quantity,
-      unitPrice: input.unitPrice,
+      unitPrice: input.unitPrice ?? null,
       updatedAt: now,
     })
     .where(eq(shoppingItems.id, itemId))
