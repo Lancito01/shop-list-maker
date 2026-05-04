@@ -15,7 +15,7 @@ export default async function Home() {
       <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-zinc-100">
-            Finance Helper
+            Budgetly
           </h1>
           <p className="text-sm text-zinc-400">
             Manage budgets, track expenses and income, and keep your finances in sync.

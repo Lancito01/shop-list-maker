@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finance Helper",
+  title: "Budgetly",
   description:
     "Track budgets, expenses, and income with Google sign-in and Vercel-managed Postgres storage.",
 };
