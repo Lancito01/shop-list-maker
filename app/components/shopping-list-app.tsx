@@ -172,12 +172,13 @@ export function ShoppingListApp() {
   async function saveEditedItem() {
     if (!editingDraft) return;
 
+    const trimmedPrice = editingDraft.absPrice.trim();
     const finalPrice =
-      editingDraft.absPrice.trim() === ""
-        ? ""
+      trimmedPrice === ""
+        ? undefined
         : editingDraft.isNeg
-          ? `-${editingDraft.absPrice.trim()}`
-          : editingDraft.absPrice.trim();
+          ? `-${trimmedPrice}`
+          : trimmedPrice;
 
     setSavingItem(true);
     setErrorMessage(null);
@@ -189,7 +190,7 @@ export function ShoppingListApp() {
         body: JSON.stringify({
           name: editingDraft.name,
           quantity: editingDraft.quantity,
-          unitPrice: finalPrice,
+          ...(finalPrice === undefined ? {} : { unitPrice: finalPrice }),
         }),
       });
       const payload = (await response.json()) as MutationErrorResponse;
@@ -288,9 +289,11 @@ export function ShoppingListApp() {
 
     const normalizedUnitPrice = newItem.unitPrice.trim().replace(/^-+/, "");
     const finalPrice =
-      newItemPriceNegative && normalizedUnitPrice
-        ? `-${normalizedUnitPrice}`
-        : normalizedUnitPrice;
+      normalizedUnitPrice === ""
+        ? undefined
+        : newItemPriceNegative
+          ? `-${normalizedUnitPrice}`
+          : normalizedUnitPrice;
 
     try {
       const response = await fetch("/api/items", {
@@ -302,7 +305,7 @@ export function ShoppingListApp() {
           listId: selectedListId,
           name: newItem.name,
           quantity: newItemCustomAmount ? newItem.quantity : "1",
-          unitPrice: finalPrice,
+          ...(finalPrice === undefined ? {} : { unitPrice: finalPrice }),
         }),
       });
       const payload = (await response.json()) as MutationErrorResponse;
