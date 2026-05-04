@@ -59,9 +59,7 @@ export const shoppingItems = pgTable(
     quantity: numeric("quantity", { precision: 12, scale: 3 })
       .default("1")
       .notNull(),
-    unitPrice: numeric("unit_price", { precision: 12, scale: 2 })
-      .default("0")
-      .notNull(),
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

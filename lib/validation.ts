@@ -14,10 +14,17 @@ const quantityString = z
   .pipe(z.string().regex(quantityRegex, "Quantity supports up to 3 decimals."))
   .refine((value) => Number(value) > 0, "Quantity must be greater than 0.");
 
-const unitPriceString = z
+const optionalUnitPriceString = z
   .string()
-  .transform((value) => value.trim())
-  .pipe(z.string().regex(unitPriceRegex, "Price must be a number with up to 2 decimals (negative values allowed)."));
+  .optional()
+  .transform((value) => {
+    if (value === undefined || value.trim() === "") return undefined;
+    return value.trim();
+  })
+  .refine(
+    (value) => value === undefined || unitPriceRegex.test(value),
+    { message: "Price must be a number with up to 2 decimals (negative values allowed)." },
+  );
 
 export const createListSchema = z.object({
   name: normalizedString,
@@ -27,13 +34,13 @@ export const createItemSchema = z.object({
   listId: z.string().uuid(),
   name: normalizedString,
   quantity: quantityString,
-  unitPrice: unitPriceString,
+  unitPrice: optionalUnitPriceString,
 });
 
 export const updateItemSchema = z.object({
   name: normalizedString,
   quantity: quantityString,
-  unitPrice: unitPriceString,
+  unitPrice: optionalUnitPriceString,
 });
 
 export const idParamSchema = z.string().uuid();
