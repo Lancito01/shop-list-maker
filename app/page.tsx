@@ -15,10 +15,10 @@ export default async function Home() {
       <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-zinc-100">
-            Shopping List Maker
+            Finance Helper
           </h1>
           <p className="text-sm text-zinc-400">
-            Build lists, track amounts and prices, and keep totals in sync.
+            Manage budgets, track expenses and income, and keep your finances in sync.
           </p>
         </div>
         {isAuthenticated ? <SignOutButton /> : <SignInButton />}
@@ -28,11 +28,11 @@ export default async function Home() {
         <main className="flex flex-1 items-center justify-center">
           <div className="max-w-lg rounded-2xl border border-white/10 bg-zinc-900/70 p-8 text-center shadow-2xl shadow-black/30 backdrop-blur">
             <h2 className="text-xl font-semibold text-zinc-100">
-              Sign in to manage your shopping lists
+              Sign in to manage your finances
             </h2>
             <p className="mt-2 text-sm text-zinc-400">
-              Your data is private to your account and stored in a Vercel-managed
-              Postgres database.
+              Your budgets and entries are private to your account and stored in a
+              Vercel-managed Postgres database.
             </p>
             <div className="mt-5 flex justify-center">
               <SignInButton />
