@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 
+import type { EntryCurrency } from "@/lib/currency";
 import { getDb } from "@/lib/db";
 import { shoppingItems, shoppingLists } from "@/lib/db/schema";
 
@@ -9,6 +10,7 @@ export type ShoppingItemRecord = {
   name: string;
   quantity: string;
   unitPrice: string | null;
+  currency: EntryCurrency;
   createdAt: string;
   updatedAt: string;
 };
@@ -36,6 +38,7 @@ function mapItemRow(row: typeof shoppingItems.$inferSelect): ShoppingItemRecord 
     name: row.name,
     quantity: String(row.quantity),
     unitPrice: row.unitPrice != null ? String(row.unitPrice) : null,
+    currency: row.currency as EntryCurrency,
     createdAt: toIsoString(row.createdAt),
     updatedAt: toIsoString(row.updatedAt),
   };
@@ -130,6 +133,7 @@ export async function createItem(
     name: string;
     quantity: string;
     unitPrice?: string;
+    currency?: EntryCurrency;
   },
 ): Promise<ShoppingItemRecord | null> {
   const db = getDb();
@@ -143,6 +147,7 @@ export async function createItem(
     listId: input.listId,
     name: input.name,
     quantity: input.quantity,
+    currency: input.currency ?? "USD",
     updatedAt: now,
     ...(input.unitPrice === undefined ? {} : { unitPrice: input.unitPrice }),
   };
@@ -166,6 +171,7 @@ export async function updateItem(
     name: string;
     quantity: string;
     unitPrice?: string;
+    currency: EntryCurrency;
   },
 ): Promise<ShoppingItemRecord | null> {
   const db = getDb();
@@ -189,6 +195,7 @@ export async function updateItem(
     .set({
       name: input.name,
       quantity: input.quantity,
+      currency: input.currency,
       unitPrice: input.unitPrice ?? null,
       updatedAt: now,
     })

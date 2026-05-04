@@ -60,6 +60,7 @@ export const shoppingItems = pgTable(
       .default("1")
       .notNull(),
     unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
+    currency: varchar("currency", { length: 3 }).default("USD").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -2,11 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { formatCurrency, toNumber } from "@/lib/currency";
+import {
+  displayCurrencies,
+  entryCurrencies,
+  formatCurrency,
+  toNumber,
+  type DisplayCurrency,
+  type EntryCurrency,
+} from "@/lib/currency";
 import type {
   ShoppingItemRecord,
   ShoppingListRecord,
 } from "@/lib/data/shopping";
+import {
+  convertAmount,
+  type ExchangeRatesSnapshot,
+} from "@/lib/exchange-rates";
 
 type ShoppingListResponse = {
   lists: ShoppingListRecord[];
@@ -14,6 +25,10 @@ type ShoppingListResponse = {
 };
 
 type MutationErrorResponse = {
+  error?: string;
+};
+
+type ExchangeRatesResponse = ExchangeRatesSnapshot & {
   error?: string;
 };
 
@@ -25,12 +40,14 @@ type EditDraft = {
   quantity: string;
   absPrice: string;
   isNeg: boolean;
+  currency: EntryCurrency;
 };
 
 const defaultNewItem = {
   name: "",
   quantity: "1",
   unitPrice: "",
+  currency: "USD" as EntryCurrency,
 };
 
 function PencilIcon() {
@@ -79,6 +96,17 @@ export function ShoppingListApp() {
   const [deletingItems, setDeletingItems] = useState<PendingMap>({});
   const [deletingLists, setDeletingLists] = useState<PendingMap>({});
   const [editingDraft, setEditingDraft] = useState<EditDraft | null>(null);
+  const [preferredCurrency, setPreferredCurrency] = useState<DisplayCurrency>(() => {
+    if (typeof window === "undefined") {
+      return "USD";
+    }
+
+    const stored = window.localStorage.getItem("preferred-total-currency");
+    return stored === "USD" || stored === "ARS" ? stored : "USD";
+  });
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRatesSnapshot | null>(null);
+  const [exchangeRatesLoading, setExchangeRatesLoading] = useState(false);
+  const [exchangeRatesError, setExchangeRatesError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadLists = useCallback(async () => {
@@ -123,6 +151,31 @@ export function ShoppingListApp() {
     }
   }, []);
 
+  const loadExchangeRates = useCallback(async () => {
+    setExchangeRatesLoading(true);
+    setExchangeRatesError(null);
+
+    try {
+      const response = await fetch("/api/exchange-rates", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as ExchangeRatesResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to load exchange rates.");
+      }
+
+      setExchangeRates(payload);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to load exchange rates.";
+      setExchangeRatesError(message);
+    } finally {
+      setExchangeRatesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadLists();
@@ -133,21 +186,85 @@ export function ShoppingListApp() {
     };
   }, [loadLists]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadExchangeRates();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadExchangeRates]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadExchangeRates();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadExchangeRates]);
+
+  useEffect(() => {
+    window.localStorage.setItem("preferred-total-currency", preferredCurrency);
+  }, [preferredCurrency]);
+
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) ?? null,
     [lists, selectedListId],
   );
 
-  const listTotal = useMemo(() => {
-    if (!selectedList) {
-      return 0;
+  const convertSubtotal = useCallback(
+    (subtotal: number, entryCurrency: EntryCurrency): number | null => {
+      if (entryCurrency === preferredCurrency) {
+        return subtotal;
+      }
+
+      if (!exchangeRates) {
+        return null;
+      }
+
+      return convertAmount(subtotal, entryCurrency, preferredCurrency, exchangeRates);
+    },
+    [exchangeRates, preferredCurrency],
+  );
+
+  const listTotalsById = useMemo(() => {
+    const totals = new Map<string, { total: number; unavailable: boolean }>();
+
+    for (const list of lists) {
+      let total = 0;
+      let unavailable = false;
+
+      for (const item of list.items) {
+        if (!item.unitPrice) {
+          continue;
+        }
+
+        const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
+        const converted = convertSubtotal(subtotal, item.currency);
+        if (converted == null) {
+          unavailable = true;
+          continue;
+        }
+
+        total += converted;
+      }
+
+      totals.set(list.id, { total, unavailable });
     }
 
-    return selectedList.items.reduce(
-      (sum, item) => sum + toNumber(item.quantity) * toNumber(item.unitPrice),
-      0,
-    );
-  }, [selectedList]);
+    return totals;
+  }, [convertSubtotal, lists]);
+
+  const selectedListTotals = useMemo(() => {
+    if (!selectedList) {
+      return { total: 0, unavailable: false };
+    }
+
+    return listTotalsById.get(selectedList.id) ?? { total: 0, unavailable: false };
+  }, [listTotalsById, selectedList]);
 
   const hasEstimatedItems = useMemo(
     () => selectedList?.items.some((item) => !item.unitPrice) ?? false,
@@ -162,6 +279,7 @@ export function ShoppingListApp() {
       quantity: item.quantity,
       absPrice: isNeg ? (item.unitPrice?.slice(1) ?? "") : (item.unitPrice ?? ""),
       isNeg,
+      currency: item.currency,
     });
   }
 
@@ -190,6 +308,7 @@ export function ShoppingListApp() {
         body: JSON.stringify({
           name: editingDraft.name,
           quantity: editingDraft.quantity,
+          currency: editingDraft.currency,
           ...(finalPrice === undefined ? {} : { unitPrice: finalPrice }),
         }),
       });
@@ -305,6 +424,7 @@ export function ShoppingListApp() {
           listId: selectedListId,
           name: newItem.name,
           quantity: newItemCustomAmount ? newItem.quantity : "1",
+          currency: newItem.currency,
           ...(finalPrice === undefined ? {} : { unitPrice: finalPrice }),
         }),
       });
@@ -355,7 +475,23 @@ export function ShoppingListApp() {
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
       <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
-        <h2 className="text-lg font-semibold text-zinc-100">Your Budgets</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-zinc-100">Your Budgets</h2>
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            Totals in
+            <select
+              value={preferredCurrency}
+              onChange={(event) => setPreferredCurrency(event.target.value as DisplayCurrency)}
+              className="rounded-md border border-white/15 bg-zinc-950/80 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
+            >
+              {displayCurrencies.map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         <div className="mt-3 flex gap-2">
           <input
@@ -384,25 +520,45 @@ export function ShoppingListApp() {
             return (
               <div
                 key={list.id}
-                className={`flex items-center justify-between rounded-md border px-3 py-2 ${
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  setSelectedListId(list.id);
+                  setEditingDraft(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedListId(list.id);
+                    setEditingDraft(null);
+                  }
+                }}
+                className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
                   active
                     ? "border-cyan-400/50 bg-zinc-800/80 shadow-lg shadow-cyan-950/30"
                     : "border-white/10 bg-zinc-900/70 hover:bg-zinc-800/80"
                 }`}
               >
+                <div className="min-w-0 cursor-pointer">
+                  <p className="truncate text-left text-sm font-medium text-zinc-100">
+                    {list.name}
+                  </p>
+                  <p className="truncate text-left text-xs text-zinc-500">
+                    Total:{" "}
+                    {listTotalsById.get(list.id)?.unavailable
+                      ? "Rate unavailable"
+                      : formatCurrency(
+                          listTotalsById.get(list.id)?.total ?? 0,
+                          preferredCurrency,
+                        )}
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedListId(list.id);
-                    setEditingDraft(null);
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void removeList(list.id);
                   }}
-                  className="truncate text-left text-sm font-medium text-zinc-100"
-                >
-                  {list.name}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void removeList(list.id)}
                   disabled={deletingLists[list.id]}
                   className="rounded px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -428,21 +584,32 @@ export function ShoppingListApp() {
               <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
               <p
                 className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-                  hasEstimatedItems
+                  selectedListTotals.unavailable
+                    ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                    : hasEstimatedItems
                     ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
-                    : listTotal < 0
+                    : selectedListTotals.total < 0
                       ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
                       : "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
                 }`}
               >
-                {listTotal < 0
-                  ? `Net Received: ${hasEstimatedItems ? "~" : ""}${formatCurrency(Math.abs(listTotal))}`
-                  : `${hasEstimatedItems ? "Est. " : ""}Total: ${formatCurrency(listTotal)}`}
-                {hasEstimatedItems && (
+                {selectedListTotals.unavailable
+                  ? "Total unavailable (exchange rates needed)"
+                  : selectedListTotals.total < 0
+                    ? `Net Received: ${hasEstimatedItems ? "~" : ""}${formatCurrency(Math.abs(selectedListTotals.total), preferredCurrency)}`
+                    : `${hasEstimatedItems ? "Est. " : ""}Total: ${formatCurrency(selectedListTotals.total, preferredCurrency)}`}
+                {!selectedListTotals.unavailable && hasEstimatedItems && (
                   <span className="ml-1.5 text-xs opacity-70">(some prices TBD)</span>
                 )}
               </p>
             </div>
+            {(exchangeRatesLoading || exchangeRatesError) && (
+              <p className="text-xs text-zinc-500">
+                {exchangeRatesLoading
+                  ? "Refreshing exchange rates..."
+                  : `Exchange rates unavailable: ${exchangeRatesError}`}
+              </p>
+            )}
 
             {/* Add item form */}
             <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2">
@@ -508,6 +675,22 @@ export function ShoppingListApp() {
                     placeholder="Price (optional)"
                     className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
                   />
+                  <select
+                    value={newItem.currency}
+                    onChange={(event) =>
+                      setNewItem((current) => ({
+                        ...current,
+                        currency: event.target.value as EntryCurrency,
+                      }))
+                    }
+                    className="w-20 rounded-xl border border-white/10 bg-zinc-950/80 px-2.5 py-2.5 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                  >
+                    {entryCurrencies.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <button
@@ -616,6 +799,21 @@ export function ShoppingListApp() {
                             placeholder="Price (TBD)"
                             className="min-w-0 flex-1 rounded-lg border bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:outline-none border-white/10 focus:border-cyan-400/60"
                           />
+                          <select
+                            value={editingDraft.currency}
+                            onChange={(e) =>
+                              setEditingDraft((d) =>
+                                d ? { ...d, currency: e.target.value as EntryCurrency } : d,
+                              )
+                            }
+                            className="w-20 rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                          >
+                            {entryCurrencies.map((currency) => (
+                              <option key={currency} value={currency}>
+                                {currency}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* Save / Cancel */}
@@ -646,7 +844,7 @@ export function ShoppingListApp() {
                 const qtyNum = toNumber(item.quantity);
                 const priceLabel = isTbd
                   ? "TBD"
-                  : formatCurrency(Math.abs(toNumber(item.unitPrice)));
+                  : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
 
                 return (
                   <div
@@ -662,14 +860,14 @@ export function ShoppingListApp() {
                     <span className="hidden whitespace-nowrap text-right text-xs text-zinc-400 tabular-nums md:block">
                       {qtyNum !== 1
                         ? `${item.quantity} × ${priceLabel}`
-                        : priceLabel}
+                        : `${priceLabel}`}
                     </span>
 
                     {/* Subtotal */}
                     <span
                       className={`whitespace-nowrap text-sm font-semibold tabular-nums md:text-right ${subtotalColor}`}
                     >
-                      {isTbd ? "TBD" : formatCurrency(subtotal)}
+                      {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
                     </span>
 
                     {/* Action buttons */}

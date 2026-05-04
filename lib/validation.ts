@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const quantityRegex = /^\d+(\.\d{1,3})?$/;
 const unitPriceRegex = /^-?\d+(\.\d{1,2})?$/;
+const entryCurrencySchema = z.enum(["USD", "EUR", "ARS"]);
 
 const normalizedString = z
   .string()
@@ -35,12 +36,14 @@ export const createItemSchema = z.object({
   name: normalizedString,
   quantity: quantityString,
   unitPrice: optionalUnitPriceString,
+  currency: entryCurrencySchema.optional().default("USD"),
 });
 
 export const updateItemSchema = z.object({
   name: normalizedString,
   quantity: quantityString,
   unitPrice: optionalUnitPriceString,
+  currency: entryCurrencySchema,
 });
 
 export const idParamSchema = z.string().uuid();
