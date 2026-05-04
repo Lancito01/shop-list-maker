@@ -19,11 +19,51 @@ type MutationErrorResponse = {
 
 type PendingMap = Record<string, boolean>;
 
+type EditDraft = {
+  itemId: string;
+  name: string;
+  quantity: string;
+  absPrice: string;
+  isNeg: boolean;
+};
+
 const defaultNewItem = {
   name: "",
   quantity: "1",
   unitPrice: "",
 };
+
+function PencilIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="h-3.5 w-3.5 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="h-3.5 w-3.5 shrink-0"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 3.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
 
 export function ShoppingListApp() {
   const [lists, setLists] = useState<ShoppingListRecord[]>([]);
@@ -35,9 +75,10 @@ export function ShoppingListApp() {
   const [loadingLists, setLoadingLists] = useState(true);
   const [creatingList, setCreatingList] = useState(false);
   const [creatingItem, setCreatingItem] = useState(false);
-  const [savingItems, setSavingItems] = useState<PendingMap>({});
+  const [savingItem, setSavingItem] = useState(false);
   const [deletingItems, setDeletingItems] = useState<PendingMap>({});
   const [deletingLists, setDeletingLists] = useState<PendingMap>({});
+  const [editingDraft, setEditingDraft] = useState<EditDraft | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadLists = useCallback(async () => {
@@ -103,22 +144,57 @@ export function ShoppingListApp() {
     [selectedList],
   );
 
-  function updateItemInLocalState(
-    itemId: string,
-    updater: (item: ShoppingItemRecord) => ShoppingItemRecord,
-  ) {
-    setLists((currentLists) =>
-      currentLists.map((list) => {
-        if (list.id !== selectedListId) {
-          return list;
-        }
+  function startEditing(item: ShoppingItemRecord) {
+    const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
+    setEditingDraft({
+      itemId: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      absPrice: isNeg ? (item.unitPrice?.slice(1) ?? "") : (item.unitPrice ?? ""),
+      isNeg,
+    });
+  }
 
-        return {
-          ...list,
-          items: list.items.map((item) => (item.id === itemId ? updater(item) : item)),
-        };
-      }),
-    );
+  function cancelEditing() {
+    setEditingDraft(null);
+  }
+
+  async function saveEditedItem() {
+    if (!editingDraft) return;
+
+    const finalPrice =
+      editingDraft.absPrice.trim() === ""
+        ? ""
+        : editingDraft.isNeg
+          ? `-${editingDraft.absPrice.trim()}`
+          : editingDraft.absPrice.trim();
+
+    setSavingItem(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch(`/api/items/${editingDraft.itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editingDraft.name,
+          quantity: editingDraft.quantity,
+          unitPrice: finalPrice,
+        }),
+      });
+      const payload = (await response.json()) as MutationErrorResponse;
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to save item.");
+      }
+
+      setEditingDraft(null);
+      await loadLists();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save item.";
+      setErrorMessage(message);
+    } finally {
+      setSavingItem(false);
+    }
   }
 
   async function createList() {
@@ -233,36 +309,6 @@ export function ShoppingListApp() {
       setErrorMessage(message);
     } finally {
       setCreatingItem(false);
-    }
-  }
-
-  async function saveItem(item: ShoppingItemRecord) {
-    setSavingItems((current) => ({ ...current, [item.id]: true }));
-    setErrorMessage(null);
-
-    try {
-      const response = await fetch(`/api/items/${item.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice ?? "",
-        }),
-      });
-      const payload = (await response.json()) as MutationErrorResponse;
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to save item.");
-      }
-
-      await loadLists();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to save item.";
-      setErrorMessage(message);
-    } finally {
-      setSavingItems((current) => ({ ...current, [item.id]: false }));
     }
   }
 
@@ -460,7 +506,7 @@ export function ShoppingListApp() {
             </div>
 
             {/* Items list */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {selectedList.items.length === 0 && (
                 <p className="py-4 text-center text-sm text-zinc-400">
                   No entries yet. Add your first entry above.
@@ -469,130 +515,159 @@ export function ShoppingListApp() {
 
               {selectedList.items.map((item) => {
                 const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
-                const absPrice = item.unitPrice
-                  ? isNeg
-                    ? item.unitPrice.slice(1)
-                    : item.unitPrice
-                  : "";
                 const isTbd = !item.unitPrice;
                 const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
-                const isSaving = Boolean(savingItems[item.id]);
                 const isDeleting = Boolean(deletingItems[item.id]);
+                const isThisEditing = editingDraft?.itemId === item.id;
+
+                // Row theme based on value type
+                const rowTheme = isTbd
+                  ? "border-amber-400/30 bg-amber-500/5"
+                  : isNeg
+                    ? "border-emerald-400/40 bg-emerald-500/15"
+                    : "border-white/10 bg-zinc-950/40";
+
+                const subtotalColor = isTbd
+                  ? "text-amber-300"
+                  : isNeg
+                    ? "text-emerald-300"
+                    : "text-zinc-100";
+
+                if (isThisEditing && editingDraft) {
+                  // ── EDIT MODE ──────────────────────────────────────────────
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-xl border p-3 space-y-2 ${rowTheme}`}
+                    >
+                      {/* Name input */}
+                      <input
+                        value={editingDraft.name}
+                        onChange={(e) =>
+                          setEditingDraft((d) => d ? { ...d, name: e.target.value } : d)
+                        }
+                        placeholder="Entry name"
+                        className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                      />
+
+                      {/* Controls row */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Quantity */}
+                        <input
+                          value={editingDraft.quantity}
+                          onChange={(e) =>
+                            setEditingDraft((d) => d ? { ...d, quantity: e.target.value } : d)
+                          }
+                          inputMode="decimal"
+                          placeholder="Qty"
+                          className="w-16 rounded-lg border border-white/10 bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                        />
+
+                        {/* Sign toggle + price */}
+                        <div className="flex flex-1 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingDraft((d) => d ? { ...d, isNeg: !d.isNeg } : d)
+                            }
+                            title={
+                              editingDraft.isNeg
+                                ? "Currently: income (−). Click to switch to expense (+)."
+                                : "Currently: expense (+). Click to switch to income (−)."
+                            }
+                            className={`rounded-lg border px-2.5 py-2 text-sm font-bold transition ${
+                              editingDraft.isNeg
+                                ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                                : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
+                            }`}
+                          >
+                            {editingDraft.isNeg ? "−" : "+"}
+                          </button>
+                          <input
+                            value={editingDraft.absPrice}
+                            onChange={(e) =>
+                              setEditingDraft((d) => d ? { ...d, absPrice: e.target.value } : d)
+                            }
+                            inputMode="decimal"
+                            placeholder="Price (TBD)"
+                            className="min-w-0 flex-1 rounded-lg border bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:outline-none border-white/10 focus:border-cyan-400/60"
+                          />
+                        </div>
+
+                        {/* Save / Cancel */}
+                        <div className="ml-auto flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void saveEditedItem()}
+                            disabled={savingItem}
+                            className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {savingItem ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditing}
+                            disabled={savingItem}
+                            className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ── VIEW MODE ───────────────────────────────────────────────
+                const qtyNum = toNumber(item.quantity);
+                const priceLabel = isTbd
+                  ? "TBD"
+                  : formatCurrency(Math.abs(toNumber(item.unitPrice)));
 
                 return (
                   <div
                     key={item.id}
-                    className={`overflow-hidden rounded-xl border p-3 space-y-2 ${
-                      isTbd
-                        ? "border-amber-400/30 bg-amber-500/5"
-                        : isNeg
-                          ? "border-emerald-400/40 bg-emerald-500/15"
-                          : "border-white/10 bg-zinc-950/40"
-                    }`}
+                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${rowTheme}`}
                   >
-                    {/* Name */}
-                    <input
-                      value={item.name}
-                      onChange={(event) =>
-                        updateItemInLocalState(item.id, (current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                      className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-base text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
-                    />
+                    {/* Entry name */}
+                    <span className="flex-1 min-w-0 truncate text-sm font-medium text-zinc-100">
+                      {item.name || <span className="italic text-zinc-500">Unnamed entry</span>}
+                    </span>
 
-                    {/* Controls: qty, sign + price, subtotal, actions */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* Quantity */}
-                      <input
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateItemInLocalState(item.id, (current) => ({
-                            ...current,
-                            quantity: event.target.value,
-                          }))
-                        }
-                        inputMode="decimal"
-                        placeholder="Qty"
-                        className="w-16 rounded-lg border border-white/10 bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
-                      />
+                    {/* Qty × unit price — hidden on mobile */}
+                    <span className="hidden sm:block whitespace-nowrap text-xs text-zinc-400 tabular-nums">
+                      {qtyNum !== 1
+                        ? `${item.quantity} × ${priceLabel}`
+                        : priceLabel}
+                    </span>
 
-                      {/* Sign toggle + price */}
-                      <div className="flex flex-1 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateItemInLocalState(item.id, (current) => {
-                              const neg = current.unitPrice?.startsWith("-") ?? false;
-                              const abs = neg
-                                ? (current.unitPrice?.slice(1) ?? "")
-                                : (current.unitPrice ?? "");
-                              const nextPrice = neg ? abs : abs ? `-${abs}` : "";
-                              return { ...current, unitPrice: nextPrice };
-                            })
-                          }
-                          title={isNeg ? "Currently: income (−). Click to switch to expense (+)." : "Currently: expense (+). Click to switch to income (−)."}
-                          className={`rounded-lg border px-2.5 py-2 text-sm font-bold transition ${
-                            isNeg
-                              ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                              : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
-                          }`}
-                        >
-                          {isNeg ? "−" : "+"}
-                        </button>
-                        <input
-                          value={absPrice}
-                          onChange={(event) =>
-                            updateItemInLocalState(item.id, (current) => {
-                              const neg = current.unitPrice?.startsWith("-") ?? false;
-                              const val = event.target.value;
-                              const nextPrice = val === "" ? "" : neg ? `-${val}` : val;
-                              return { ...current, unitPrice: nextPrice };
-                            })
-                          }
-                          inputMode="decimal"
-                          placeholder="Price (TBD)"
-                          className={`min-w-0 flex-1 rounded-lg border bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:outline-none ${
-                            isTbd
-                              ? "border-amber-400/30 focus:border-amber-400/60"
-                              : "border-white/10 focus:border-cyan-400/60"
-                          }`}
-                        />
-                      </div>
+                    {/* Subtotal */}
+                    <span className={`whitespace-nowrap text-sm font-semibold tabular-nums ${subtotalColor}`}>
+                      {isTbd ? "TBD" : formatCurrency(subtotal)}
+                    </span>
 
-                      {/* Subtotal */}
-                      <span
-                        className={`whitespace-nowrap text-sm font-semibold ${
-                          isTbd
-                            ? "text-amber-300"
-                            : isNeg
-                              ? "text-emerald-300"
-                              : "text-zinc-100"
-                        }`}
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1 ml-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => startEditing(item)}
+                        disabled={isDeleting}
+                        title="Edit entry"
+                        className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {isTbd ? "TBD" : formatCurrency(subtotal)}
-                      </span>
-
-                      {/* Actions */}
-                      <div className="ml-auto flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void saveItem(item)}
-                          disabled={isSaving}
-                          className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void removeItem(item.id)}
-                          disabled={isDeleting}
-                          className="rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Remove
-                        </button>
-                      </div>
+                        <PencilIcon />
+                        <span className="hidden sm:inline">Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void removeItem(item.id)}
+                        disabled={isDeleting}
+                        title="Delete entry"
+                        className="flex items-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <TrashIcon />
+                        <span className="hidden sm:inline">Delete</span>
+                      </button>
                     </div>
                   </div>
                 );
