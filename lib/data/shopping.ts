@@ -143,17 +143,16 @@ export async function createItem(
   }
 
   const now = new Date();
-  const insertValues: typeof shoppingItems.$inferInsert = {
-    listId: input.listId,
-    name: input.name,
-    quantity: input.quantity,
-    currency: input.currency ?? "USD",
-    updatedAt: now,
-    ...(input.unitPrice === undefined ? {} : { unitPrice: input.unitPrice }),
-  };
   const [item] = await db
     .insert(shoppingItems)
-    .values(insertValues)
+    .values({
+      listId: input.listId,
+      name: input.name,
+      quantity: input.quantity,
+      currency: input.currency ?? "USD",
+      unitPrice: input.unitPrice ?? null,
+      updatedAt: now,
+    })
     .returning();
 
   await db
