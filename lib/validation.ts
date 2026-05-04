@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const quantityRegex = /^\d+(\.\d{1,3})?$/;
-const unitPriceRegex = /^\d+(\.\d{1,2})?$/;
+const unitPriceRegex = /^-?\d+(\.\d{1,2})?$/;
 
 const normalizedString = z
   .string()
@@ -17,8 +17,7 @@ const quantityString = z
 const unitPriceString = z
   .string()
   .transform((value) => value.trim())
-  .pipe(z.string().regex(unitPriceRegex, "Price supports up to 2 decimals."))
-  .refine((value) => Number(value) >= 0, "Price cannot be negative.");
+  .pipe(z.string().regex(unitPriceRegex, "Price must be a number with up to 2 decimals (negative values allowed)."));
 
 export const createListSchema = z.object({
   name: normalizedString,
