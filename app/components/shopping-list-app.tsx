@@ -200,10 +200,11 @@ export function ShoppingListApp() {
     setCreatingItem(true);
     setErrorMessage(null);
 
+    const normalizedUnitPrice = newItem.unitPrice.trim().replace(/^-+/, "");
     const finalPrice =
-      newItemPriceNegative && newItem.unitPrice
-        ? `-${newItem.unitPrice}`
-        : newItem.unitPrice;
+      newItemPriceNegative && normalizedUnitPrice
+        ? `-${normalizedUnitPrice}`
+        : normalizedUnitPrice;
 
     try {
       const response = await fetch("/api/items", {
