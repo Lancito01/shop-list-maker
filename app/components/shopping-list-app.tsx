@@ -50,7 +50,7 @@ export function ShoppingListApp() {
       const payload = (await response.json()) as ShoppingListResponse;
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to load shopping lists.");
+        throw new Error(payload.error ?? "Unable to load budgets.");
       }
 
       setLists(payload.lists);
@@ -63,7 +63,7 @@ export function ShoppingListApp() {
       });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Unable to load shopping lists.";
+        error instanceof Error ? error.message : "Unable to load budgets.";
       setErrorMessage(message);
     } finally {
       setLoadingLists(false);
@@ -117,7 +117,7 @@ export function ShoppingListApp() {
   async function createList() {
     const trimmedName = newListName.trim();
     if (!trimmedName) {
-      setErrorMessage("List name cannot be empty.");
+      setErrorMessage("Budget name cannot be empty.");
       return;
     }
 
@@ -158,7 +158,7 @@ export function ShoppingListApp() {
   }
 
   async function removeList(listId: string) {
-    if (!window.confirm("Delete this list and all its items?")) {
+    if (!window.confirm("Delete this budget and all its entries?")) {
       return;
     }
 
@@ -186,7 +186,7 @@ export function ShoppingListApp() {
 
   async function addItem() {
     if (!selectedListId) {
-      setErrorMessage("Select a list before adding an item.");
+      setErrorMessage("Select a budget before adding an entry.");
       return;
     }
 
@@ -252,7 +252,7 @@ export function ShoppingListApp() {
   }
 
   async function removeItem(itemId: string) {
-    if (!window.confirm("Remove this item from the list?")) {
+    if (!window.confirm("Remove this entry from the budget?")) {
       return;
     }
 
@@ -281,13 +281,13 @@ export function ShoppingListApp() {
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
       <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
-        <h2 className="text-lg font-semibold text-zinc-100">Your Lists</h2>
+        <h2 className="text-lg font-semibold text-zinc-100">Your Budgets</h2>
 
         <div className="mt-3 flex gap-2">
           <input
             value={newListName}
             onChange={(event) => setNewListName(event.target.value)}
-            placeholder="New list name"
+            placeholder="New budget name"
             className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
           />
           <button
@@ -303,7 +303,7 @@ export function ShoppingListApp() {
         <div className="mt-4 space-y-2">
           {loadingLists && <p className="text-sm text-zinc-400">Loading lists...</p>}
           {!loadingLists && lists.length === 0 && (
-            <p className="text-sm text-zinc-400">Create your first shopping list.</p>
+            <p className="text-sm text-zinc-400">Create your first budget.</p>
           )}
           {lists.map((list) => {
             const active = list.id === selectedListId;
@@ -340,7 +340,7 @@ export function ShoppingListApp() {
       <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
         {!selectedList && (
           <p className="text-sm text-zinc-400">
-            Select or create a list to start adding items.
+            Select or create a budget to start adding entries.
           </p>
         )}
 
@@ -359,7 +359,7 @@ export function ShoppingListApp() {
                 onChange={(event) =>
                   setNewItem((current) => ({ ...current, name: event.target.value }))
                 }
-                placeholder="Item name"
+                placeholder="Entry name"
                 className="rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
               />
               <input
@@ -391,7 +391,7 @@ export function ShoppingListApp() {
                 disabled={creatingItem}
                 className="rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Add Item
+                Add Entry
               </button>
             </div>
 
@@ -399,7 +399,7 @@ export function ShoppingListApp() {
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-left text-zinc-400">
-                    <th className="py-2">Item</th>
+                    <th className="py-2">Entry</th>
                     <th className="py-2">Amount</th>
                     <th className="py-2">Unit Price</th>
                     <th className="py-2">Subtotal</th>
@@ -410,7 +410,7 @@ export function ShoppingListApp() {
                   {selectedList.items.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-4 text-center text-zinc-400">
-                        No items yet. Add your first item above.
+                        No entries yet. Add your first entry above.
                       </td>
                     </tr>
                   )}

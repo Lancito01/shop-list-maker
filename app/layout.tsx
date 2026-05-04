@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Shopping List Maker",
+  title: "Finance Helper",
   description:
-    "Simple shopping list app with Google sign-in and Vercel-managed Postgres storage.",
+    "Track budgets, expenses, and income with Google sign-in and Vercel-managed Postgres storage.",
 };
 
 export default function RootLayout({
