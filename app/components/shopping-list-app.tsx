@@ -11,6 +11,7 @@ import {
   type EntryCurrency,
 } from "@/lib/currency";
 import type {
+  ListType,
   ShoppingItemRecord,
   ShoppingListRecord,
 } from "@/lib/data/shopping";
@@ -41,6 +42,15 @@ type EditDraft = {
   absPrice: string;
   isNeg: boolean;
   currency: EntryCurrency;
+  completed: boolean;
+};
+
+type ItemUpdateInput = {
+  name: string;
+  quantity: string;
+  unitPrice?: string;
+  currency: EntryCurrency;
+  completed: boolean;
 };
 
 const defaultNewItem = {
@@ -86,12 +96,17 @@ export function ShoppingListApp() {
   const [lists, setLists] = useState<ShoppingListRecord[]>([]);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [newListName, setNewListName] = useState("");
+  const [newListType, setNewListType] = useState<ListType>("budget");
   const [newItem, setNewItem] = useState(defaultNewItem);
+  const [newTodoEntryName, setNewTodoEntryName] = useState("");
+  const [todoEditItemId, setTodoEditItemId] = useState<string | null>(null);
+  const [todoEditName, setTodoEditName] = useState("");
   const [newItemCustomAmount, setNewItemCustomAmount] = useState(false);
   const [newItemPriceNegative, setNewItemPriceNegative] = useState(false);
   const [loadingLists, setLoadingLists] = useState(true);
   const [creatingList, setCreatingList] = useState(false);
   const [creatingItem, setCreatingItem] = useState(false);
+  const [updatingItems, setUpdatingItems] = useState<PendingMap>({});
   const [savingItem, setSavingItem] = useState(false);
   const [deletingItems, setDeletingItems] = useState<PendingMap>({});
   const [deletingLists, setDeletingLists] = useState<PendingMap>({});
@@ -133,6 +148,19 @@ export function ShoppingListApp() {
         const stillExists = payload.lists.some((list) =>
           list.items.some((item) => item.id === current.itemId),
         );
+        return stillExists ? current : null;
+      });
+      setTodoEditItemId((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const stillExists = payload.lists.some((list) =>
+          list.items.some((item) => item.id === current),
+        );
+        if (!stillExists) {
+          setTodoEditName("");
+        }
         return stillExists ? current : null;
       });
       setSelectedListId((current) => {
@@ -234,11 +262,15 @@ export function ShoppingListApp() {
     const totals = new Map<string, { total: number; unavailable: boolean }>();
 
     for (const list of lists) {
+      if (list.type !== "budget") {
+        continue;
+      }
+
       let total = 0;
       let unavailable = false;
 
       for (const item of list.items) {
-        if (!item.unitPrice) {
+        if (item.completed || !item.unitPrice) {
           continue;
         }
 
@@ -259,7 +291,7 @@ export function ShoppingListApp() {
   }, [convertSubtotal, lists]);
 
   const selectedListTotals = useMemo(() => {
-    if (!selectedList) {
+    if (!selectedList || selectedList.type !== "budget") {
       return { total: 0, unavailable: false };
     }
 
@@ -267,7 +299,10 @@ export function ShoppingListApp() {
   }, [listTotalsById, selectedList]);
 
   const hasEstimatedItems = useMemo(
-    () => selectedList?.items.some((item) => !item.unitPrice) ?? false,
+    () =>
+      selectedList?.type === "budget"
+        ? selectedList.items.some((item) => !item.completed && !item.unitPrice)
+        : false,
     [selectedList],
   );
 
@@ -280,11 +315,88 @@ export function ShoppingListApp() {
       absPrice: isNeg ? (item.unitPrice?.slice(1) ?? "") : (item.unitPrice ?? ""),
       isNeg,
       currency: item.currency,
+      completed: item.completed,
     });
   }
 
   function cancelEditing() {
     setEditingDraft(null);
+  }
+
+  async function patchItem(itemId: string, input: ItemUpdateInput) {
+    const response = await fetch(`/api/items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json()) as MutationErrorResponse;
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Unable to update item.");
+    }
+  }
+
+  async function toggleItemCompleted(item: ShoppingItemRecord, completed: boolean) {
+    setUpdatingItems((current) => ({ ...current, [item.id]: true }));
+    setErrorMessage(null);
+
+    try {
+      await patchItem(item.id, {
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice ?? undefined,
+        currency: item.currency,
+        completed,
+      });
+      await loadLists();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to update entry.";
+      setErrorMessage(message);
+    } finally {
+      setUpdatingItems((current) => ({ ...current, [item.id]: false }));
+    }
+  }
+
+  function startTodoEditing(item: ShoppingItemRecord) {
+    setTodoEditItemId(item.id);
+    setTodoEditName(item.name);
+  }
+
+  function cancelTodoEditing() {
+    setTodoEditItemId(null);
+    setTodoEditName("");
+  }
+
+  async function saveTodoEntry(item: ShoppingItemRecord) {
+    if (!todoEditItemId || todoEditItemId !== item.id) {
+      return;
+    }
+
+    const trimmedName = todoEditName.trim();
+    if (!trimmedName) {
+      setErrorMessage("Todo entry name cannot be empty.");
+      return;
+    }
+
+    setUpdatingItems((current) => ({ ...current, [item.id]: true }));
+    setErrorMessage(null);
+    try {
+      await patchItem(item.id, {
+        name: trimmedName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice ?? undefined,
+        currency: item.currency,
+        completed: item.completed,
+      });
+      cancelTodoEditing();
+      await loadLists();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to save todo entry.";
+      setErrorMessage(message);
+    } finally {
+      setUpdatingItems((current) => ({ ...current, [item.id]: false }));
+    }
   }
 
   async function saveEditedItem() {
@@ -302,20 +414,13 @@ export function ShoppingListApp() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`/api/items/${editingDraft.itemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editingDraft.name,
-          quantity: editingDraft.quantity,
-          currency: editingDraft.currency,
-          ...(finalPrice === undefined ? {} : { unitPrice: finalPrice }),
-        }),
+      await patchItem(editingDraft.itemId, {
+        name: editingDraft.name,
+        quantity: editingDraft.quantity,
+        currency: editingDraft.currency,
+        unitPrice: finalPrice,
+        completed: editingDraft.completed,
       });
-      const payload = (await response.json()) as MutationErrorResponse;
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to save item.");
-      }
 
       setEditingDraft(null);
       await loadLists();
@@ -330,7 +435,7 @@ export function ShoppingListApp() {
   async function createList() {
     const trimmedName = newListName.trim();
     if (!trimmedName) {
-      setErrorMessage("Budget name cannot be empty.");
+      setErrorMessage("List name cannot be empty.");
       return;
     }
 
@@ -343,7 +448,7 @@ export function ShoppingListApp() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name: trimmedName }),
+        body: JSON.stringify({ name: trimmedName, type: newListType }),
       });
       const payload = (await response.json()) as {
         list?: { id: string };
@@ -359,6 +464,7 @@ export function ShoppingListApp() {
       }
 
       setNewListName("");
+      setNewListType("budget");
       await loadLists();
       setSelectedListId(payload.list.id);
     } catch (error) {
@@ -425,6 +531,7 @@ export function ShoppingListApp() {
           name: newItem.name,
           quantity: newItemCustomAmount ? newItem.quantity : "1",
           currency: newItem.currency,
+          completed: false,
           ...(finalPrice === undefined ? {} : { unitPrice: finalPrice }),
         }),
       });
@@ -439,6 +546,51 @@ export function ShoppingListApp() {
       await loadLists();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to add item.";
+      setErrorMessage(message);
+    } finally {
+      setCreatingItem(false);
+    }
+  }
+
+  async function addTodoEntry() {
+    if (!selectedListId || selectedList?.type !== "todo") {
+      setErrorMessage("Select a todo list before adding an entry.");
+      return;
+    }
+
+    const trimmedName = newTodoEntryName.trim();
+    if (!trimmedName) {
+      setErrorMessage("Todo entry name cannot be empty.");
+      return;
+    }
+
+    setCreatingItem(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/items", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          listId: selectedListId,
+          name: trimmedName,
+          quantity: "1",
+          currency: "USD",
+          completed: false,
+        }),
+      });
+      const payload = (await response.json()) as MutationErrorResponse;
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to add todo entry.");
+      }
+
+      setNewTodoEntryName("");
+      await loadLists();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to add todo entry.";
       setErrorMessage(message);
     } finally {
       setCreatingItem(false);
@@ -476,7 +628,7 @@ export function ShoppingListApp() {
     <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
       <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-100">Your Budgets</h2>
+          <h2 className="text-lg font-semibold text-zinc-100">Your Lists</h2>
           <label className="flex items-center gap-2 text-xs text-zinc-400">
             Totals in
             <select
@@ -497,9 +649,17 @@ export function ShoppingListApp() {
           <input
             value={newListName}
             onChange={(event) => setNewListName(event.target.value)}
-            placeholder="New budget name"
+            placeholder="New list name"
             className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
           />
+          <select
+            value={newListType}
+            onChange={(event) => setNewListType(event.target.value as ListType)}
+            className="rounded-xl border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
+          >
+            <option value="budget">Budget</option>
+            <option value="todo">Todo</option>
+          </select>
           <button
             type="button"
             onClick={() => void createList()}
@@ -513,7 +673,7 @@ export function ShoppingListApp() {
         <div className="mt-4 space-y-2">
           {loadingLists && <p className="text-sm text-zinc-400">Loading lists...</p>}
           {!loadingLists && lists.length === 0 && (
-            <p className="text-sm text-zinc-400">Create your first budget.</p>
+            <p className="text-sm text-zinc-400">Create your first list.</p>
           )}
           {lists.map((list) => {
             const active = list.id === selectedListId;
@@ -525,12 +685,16 @@ export function ShoppingListApp() {
                 onClick={() => {
                   setSelectedListId(list.id);
                   setEditingDraft(null);
+                  setTodoEditItemId(null);
+                  setTodoEditName("");
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     setSelectedListId(list.id);
                     setEditingDraft(null);
+                    setTodoEditItemId(null);
+                    setTodoEditName("");
                   }
                 }}
                 className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
@@ -543,15 +707,19 @@ export function ShoppingListApp() {
                   <p className="truncate text-left text-sm font-medium text-zinc-100">
                     {list.name}
                   </p>
-                  <p className="truncate text-left text-xs text-zinc-500">
-                    Total:{" "}
-                    {listTotalsById.get(list.id)?.unavailable
-                      ? "Rate unavailable"
-                      : formatCurrency(
-                          listTotalsById.get(list.id)?.total ?? 0,
-                          preferredCurrency,
-                        )}
-                  </p>
+                  {list.type === "budget" ? (
+                    <p className="truncate text-left text-xs text-zinc-500">
+                      Total:{" "}
+                      {listTotalsById.get(list.id)?.unavailable
+                        ? "Rate unavailable"
+                        : formatCurrency(
+                            listTotalsById.get(list.id)?.total ?? 0,
+                            preferredCurrency,
+                          )}
+                    </p>
+                  ) : (
+                    <p className="truncate text-left text-xs text-zinc-500">Todo list</p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -573,7 +741,7 @@ export function ShoppingListApp() {
       <section className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
         {!selectedList && (
           <p className="text-sm text-zinc-400">
-            Select or create a budget to start adding entries.
+            Select or create a list to start adding entries.
           </p>
         )}
 
@@ -582,28 +750,34 @@ export function ShoppingListApp() {
             {/* Budget header */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
-              <p
-                className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-                  selectedListTotals.unavailable
-                    ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
-                    : hasEstimatedItems
-                    ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
+              {selectedList.type === "budget" ? (
+                <p
+                  className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                    selectedListTotals.unavailable
+                      ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                      : hasEstimatedItems
+                        ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
+                        : selectedListTotals.total < 0
+                          ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                          : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
+                  }`}
+                >
+                  {selectedListTotals.unavailable
+                    ? "Total unavailable (exchange rates needed)"
                     : selectedListTotals.total < 0
-                      ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                      : "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                }`}
-              >
-                {selectedListTotals.unavailable
-                  ? "Total unavailable (exchange rates needed)"
-                  : selectedListTotals.total < 0
-                    ? `Net Received: ${hasEstimatedItems ? "~" : ""}${formatCurrency(Math.abs(selectedListTotals.total), preferredCurrency)}`
-                    : `${hasEstimatedItems ? "Est. " : ""}Total: ${formatCurrency(selectedListTotals.total, preferredCurrency)}`}
-                {!selectedListTotals.unavailable && hasEstimatedItems && (
-                  <span className="ml-1.5 text-xs opacity-70">(some prices TBD)</span>
-                )}
-              </p>
+                      ? `Net Received: ${hasEstimatedItems ? "~" : ""}${formatCurrency(Math.abs(selectedListTotals.total), preferredCurrency)}`
+                      : `${hasEstimatedItems ? "Est. " : ""}Total: ${formatCurrency(selectedListTotals.total, preferredCurrency)}`}
+                  {!selectedListTotals.unavailable && hasEstimatedItems && (
+                    <span className="ml-1.5 text-xs opacity-70">(some prices TBD)</span>
+                  )}
+                </p>
+              ) : (
+                <p className="rounded-full border border-white/15 bg-zinc-800/60 px-3 py-1 text-sm font-semibold text-zinc-300">
+                  Todo List
+                </p>
+              )}
             </div>
-            {(exchangeRatesLoading || exchangeRatesError) && (
+            {selectedList.type === "budget" && (exchangeRatesLoading || exchangeRatesError) && (
               <p className="text-xs text-zinc-500">
                 {exchangeRatesLoading
                   ? "Refreshing exchange rates..."
@@ -611,294 +785,451 @@ export function ShoppingListApp() {
               </p>
             )}
 
-            {/* Add item form */}
-            <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2">
-              {/* Row 1: name + custom amount toggle */}
-              <div className="flex items-center gap-3">
-                <input
-                  value={newItem.name}
-                  onChange={(event) =>
-                    setNewItem((current) => ({ ...current, name: event.target.value }))
-                  }
-                  placeholder="Entry name"
-                  className="flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
-                />
-                <label className="flex cursor-pointer select-none items-center gap-2 whitespace-nowrap text-sm text-zinc-400">
-                  <input
-                    type="checkbox"
-                    checked={newItemCustomAmount}
-                    onChange={(event) => {
-                      setNewItemCustomAmount(event.target.checked);
-                      if (!event.target.checked) {
-                        setNewItem((current) => ({ ...current, quantity: "1" }));
+            {selectedList.type === "budget" ? (
+              <>
+                {/* Add item form */}
+                <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2">
+                  {/* Row 1: name + custom amount toggle */}
+                  <div className="flex items-center gap-3">
+                    <input
+                      value={newItem.name}
+                      onChange={(event) =>
+                        setNewItem((current) => ({ ...current, name: event.target.value }))
                       }
-                    }}
-                    className="rounded accent-cyan-400"
-                  />
-                  Custom amount
-                </label>
-              </div>
-
-              {/* Row 2: optional qty, sign toggle + price, add button */}
-              <div className="flex flex-wrap items-center gap-2">
-                {newItemCustomAmount && (
-                  <input
-                    value={newItem.quantity}
-                    onChange={(event) =>
-                      setNewItem((current) => ({ ...current, quantity: event.target.value }))
-                    }
-                    inputMode="decimal"
-                    placeholder="Qty"
-                    className="w-20 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
-                  />
-                )}
-
-                <div className="flex flex-1 items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setNewItemPriceNegative((n) => !n)}
-                    title={newItemPriceNegative ? "Currently: income (−). Click to switch to expense (+)." : "Currently: expense (+). Click to switch to income (−)."}
-                    className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
-                      newItemPriceNegative
-                        ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                        : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
-                    }`}
-                  >
-                    {newItemPriceNegative ? "−" : "+"}
-                  </button>
-                  <input
-                    value={newItem.unitPrice}
-                    onChange={(event) =>
-                      setNewItem((current) => ({ ...current, unitPrice: event.target.value }))
-                    }
-                    inputMode="decimal"
-                    placeholder="Price (optional)"
-                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
-                  />
-                  <select
-                    value={newItem.currency}
-                    onChange={(event) =>
-                      setNewItem((current) => ({
-                        ...current,
-                        currency: event.target.value as EntryCurrency,
-                      }))
-                    }
-                    className="w-20 rounded-xl border border-white/10 bg-zinc-950/80 px-2.5 py-2.5 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
-                  >
-                    {entryCurrencies.map((currency) => (
-                      <option key={currency} value={currency}>
-                        {currency}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void addItem()}
-                  disabled={creatingItem}
-                  className="rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Add Entry
-                </button>
-              </div>
-            </div>
-
-            {/* Items list */}
-            <div className="space-y-1.5">
-              {selectedList.items.length === 0 && (
-                <p className="py-4 text-center text-sm text-zinc-400">
-                  No entries yet. Add your first entry above.
-                </p>
-              )}
-              {selectedList.items.length > 0 && (
-                <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                  <span>Entry</span>
-                  <span className="text-right">Qty x Price</span>
-                  <span className="text-right">Subtotal</span>
-                  <span className="text-right">Actions</span>
-                </div>
-              )}
-
-              {selectedList.items.map((item) => {
-                const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
-                const isTbd = !item.unitPrice;
-                const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
-                const isDeleting = Boolean(deletingItems[item.id]);
-                const isThisEditing = editingDraft?.itemId === item.id;
-
-                // Row theme based on value type
-                const rowTheme = isTbd
-                  ? "border-amber-400/30 bg-amber-500/5"
-                  : isNeg
-                    ? "border-emerald-400/40 bg-emerald-500/15"
-                    : "border-white/10 bg-zinc-950/40";
-
-                const subtotalColor = isTbd
-                  ? "text-amber-300"
-                  : isNeg
-                    ? "text-emerald-300"
-                    : "text-zinc-100";
-
-                if (isThisEditing && editingDraft) {
-                  // ── EDIT MODE ──────────────────────────────────────────────
-                  return (
-                    <div
-                      key={item.id}
-                      className={`rounded-xl border p-3 space-y-2 ${rowTheme}`}
-                    >
-                      {/* Name input */}
+                      placeholder="Entry name"
+                      className="flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                    />
+                    <label className="flex cursor-pointer select-none items-center gap-2 whitespace-nowrap text-sm text-zinc-400">
                       <input
-                        value={editingDraft.name}
-                        onChange={(e) =>
-                          setEditingDraft((d) => d ? { ...d, name: e.target.value } : d)
-                        }
-                        placeholder="Entry name"
-                        className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
-                      />
-
-                      {/* Controls row */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        {/* Quantity */}
-                        <input
-                          value={editingDraft.quantity}
-                          onChange={(e) =>
-                            setEditingDraft((d) => d ? { ...d, quantity: e.target.value } : d)
+                        type="checkbox"
+                        checked={newItemCustomAmount}
+                        onChange={(event) => {
+                          setNewItemCustomAmount(event.target.checked);
+                          if (!event.target.checked) {
+                            setNewItem((current) => ({ ...current, quantity: "1" }));
                           }
-                          inputMode="decimal"
-                          placeholder="Qty"
-                          className="w-16 rounded-lg border border-white/10 bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                        }}
+                        className="rounded accent-cyan-400"
+                      />
+                      Custom amount
+                    </label>
+                  </div>
+
+                  {/* Row 2: optional qty, sign toggle + price, add button */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {newItemCustomAmount && (
+                      <input
+                        value={newItem.quantity}
+                        onChange={(event) =>
+                          setNewItem((current) => ({ ...current, quantity: event.target.value }))
+                        }
+                        inputMode="decimal"
+                        placeholder="Qty"
+                        className="w-20 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                      />
+                    )}
+
+                    <div className="flex flex-1 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setNewItemPriceNegative((n) => !n)}
+                        title={newItemPriceNegative ? "Currently: income (−). Click to switch to expense (+)." : "Currently: expense (+). Click to switch to income (−)."}
+                        className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
+                          newItemPriceNegative
+                            ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                            : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
+                        }`}
+                      >
+                        {newItemPriceNegative ? "−" : "+"}
+                      </button>
+                      <input
+                        value={newItem.unitPrice}
+                        onChange={(event) =>
+                          setNewItem((current) => ({ ...current, unitPrice: event.target.value }))
+                        }
+                        inputMode="decimal"
+                        placeholder="Price (optional)"
+                        className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                      />
+                      <select
+                        value={newItem.currency}
+                        onChange={(event) =>
+                          setNewItem((current) => ({
+                            ...current,
+                            currency: event.target.value as EntryCurrency,
+                          }))
+                        }
+                        className="w-20 rounded-xl border border-white/10 bg-zinc-950/80 px-2.5 py-2.5 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                      >
+                        {entryCurrencies.map((currency) => (
+                          <option key={currency} value={currency}>
+                            {currency}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void addItem()}
+                      disabled={creatingItem}
+                      className="rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Add Entry
+                    </button>
+                  </div>
+                </div>
+
+                {/* Items list */}
+                <div className="space-y-1.5">
+                  {selectedList.items.length === 0 && (
+                    <p className="py-4 text-center text-sm text-zinc-400">
+                      No entries yet. Add your first entry above.
+                    </p>
+                  )}
+                  {selectedList.items.length > 0 && (
+                    <div className="hidden md:grid md:grid-cols-[2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      <span className="text-center">Done</span>
+                      <span>Entry</span>
+                      <span className="text-right">Qty x Price</span>
+                      <span className="text-right">Subtotal</span>
+                      <span className="text-right">Actions</span>
+                    </div>
+                  )}
+
+                  {selectedList.items.map((item) => {
+                    const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
+                    const isTbd = !item.unitPrice;
+                    const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
+                    const isDeleting = Boolean(deletingItems[item.id]);
+                    const isUpdating = Boolean(updatingItems[item.id]);
+                    const isThisEditing = editingDraft?.itemId === item.id;
+
+                    const rowTheme = item.completed
+                      ? "border-white/10 bg-zinc-900/70"
+                      : isTbd
+                        ? "border-amber-400/30 bg-amber-500/5"
+                        : isNeg
+                          ? "border-emerald-400/40 bg-emerald-500/15"
+                          : "border-white/10 bg-zinc-950/40";
+
+                    const subtotalColor = item.completed
+                      ? "text-zinc-500"
+                      : isTbd
+                        ? "text-amber-300"
+                        : isNeg
+                          ? "text-emerald-300"
+                          : "text-zinc-100";
+
+                    if (isThisEditing && editingDraft) {
+                      return (
+                        <div
+                          key={item.id}
+                          className={`rounded-xl border p-3 space-y-2 ${rowTheme}`}
+                        >
+                          <input
+                            value={editingDraft.name}
+                            onChange={(e) =>
+                              setEditingDraft((d) => d ? { ...d, name: e.target.value } : d)
+                            }
+                            placeholder="Entry name"
+                            className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                          />
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950/70 px-2.5 py-2 text-xs text-zinc-300">
+                              <input
+                                type="checkbox"
+                                checked={editingDraft.completed}
+                                onChange={(e) =>
+                                  setEditingDraft((d) =>
+                                    d ? { ...d, completed: e.target.checked } : d,
+                                  )
+                                }
+                                className="rounded accent-cyan-400"
+                              />
+                              Completed
+                            </label>
+                            <input
+                              value={editingDraft.quantity}
+                              onChange={(e) =>
+                                setEditingDraft((d) => d ? { ...d, quantity: e.target.value } : d)
+                              }
+                              inputMode="decimal"
+                              placeholder="Qty"
+                              className="w-16 rounded-lg border border-white/10 bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                            />
+
+                            <div className="flex flex-1 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingDraft((d) => d ? { ...d, isNeg: !d.isNeg } : d)
+                                }
+                                title={
+                                  editingDraft.isNeg
+                                    ? "Currently: income (−). Click to switch to expense (+)."
+                                    : "Currently: expense (+). Click to switch to income (−)."
+                                }
+                                className={`rounded-lg border px-2.5 py-2 text-sm font-bold transition ${
+                                  editingDraft.isNeg
+                                    ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                                    : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
+                                }`}
+                              >
+                                {editingDraft.isNeg ? "−" : "+"}
+                              </button>
+                              <input
+                                value={editingDraft.absPrice}
+                                onChange={(e) =>
+                                  setEditingDraft((d) => d ? { ...d, absPrice: e.target.value } : d)
+                                }
+                                inputMode="decimal"
+                                placeholder="Price (TBD)"
+                                className="min-w-0 flex-1 rounded-lg border bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:outline-none border-white/10 focus:border-cyan-400/60"
+                              />
+                              <select
+                                value={editingDraft.currency}
+                                onChange={(e) =>
+                                  setEditingDraft((d) =>
+                                    d ? { ...d, currency: e.target.value as EntryCurrency } : d,
+                                  )
+                                }
+                                className="w-20 rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                              >
+                                {entryCurrencies.map((currency) => (
+                                  <option key={currency} value={currency}>
+                                    {currency}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="ml-auto flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void saveEditedItem()}
+                                disabled={savingItem}
+                                className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {savingItem ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditing}
+                                disabled={savingItem}
+                                className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const qtyNum = toNumber(item.quantity);
+                    const priceLabel = isTbd
+                      ? "TBD"
+                      : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={item.completed}
+                          onChange={(e) =>
+                            void toggleItemCompleted(item, e.target.checked)
+                          }
+                          disabled={isDeleting || isUpdating}
+                          className="mx-auto h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={`Mark ${item.name} as completed`}
                         />
 
-                        {/* Sign toggle + price */}
-                        <div className="flex flex-1 items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditingDraft((d) => d ? { ...d, isNeg: !d.isNeg } : d)
-                            }
-                            title={
-                              editingDraft.isNeg
-                                ? "Currently: income (−). Click to switch to expense (+)."
-                                : "Currently: expense (+). Click to switch to income (−)."
-                            }
-                            className={`rounded-lg border px-2.5 py-2 text-sm font-bold transition ${
-                              editingDraft.isNeg
-                                ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                                : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
-                            }`}
-                          >
-                            {editingDraft.isNeg ? "−" : "+"}
-                          </button>
-                          <input
-                            value={editingDraft.absPrice}
-                            onChange={(e) =>
-                              setEditingDraft((d) => d ? { ...d, absPrice: e.target.value } : d)
-                            }
-                            inputMode="decimal"
-                            placeholder="Price (TBD)"
-                            className="min-w-0 flex-1 rounded-lg border bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:outline-none border-white/10 focus:border-cyan-400/60"
-                          />
-                          <select
-                            value={editingDraft.currency}
-                            onChange={(e) =>
-                              setEditingDraft((d) =>
-                                d ? { ...d, currency: e.target.value as EntryCurrency } : d,
-                              )
-                            }
-                            className="w-20 rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
-                          >
-                            {entryCurrencies.map((currency) => (
-                              <option key={currency} value={currency}>
-                                {currency}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <span
+                          className={`min-w-0 flex-1 truncate text-sm font-medium md:flex-none ${
+                            item.completed ? "text-zinc-500 line-through" : "text-zinc-100"
+                          }`}
+                        >
+                          {item.name || <span className="italic text-zinc-500">Unnamed entry</span>}
+                        </span>
 
-                        {/* Save / Cancel */}
-                        <div className="ml-auto flex gap-2">
+                        <span
+                          className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${
+                            item.completed ? "text-zinc-500 line-through" : "text-zinc-400"
+                          }`}
+                        >
+                          {qtyNum !== 1 ? `${item.quantity} × ${priceLabel}` : `${priceLabel}`}
+                        </span>
+
+                        <span
+                          className={`whitespace-nowrap text-sm font-semibold tabular-nums md:text-right ${
+                            item.completed ? "line-through" : ""
+                          } ${subtotalColor}`}
+                        >
+                          {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
+                        </span>
+
+                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
                           <button
                             type="button"
-                            onClick={() => void saveEditedItem()}
-                            disabled={savingItem}
+                            onClick={() => startEditing(item)}
+                            disabled={isDeleting || isUpdating}
+                            title="Edit entry"
+                            aria-label="Edit entry"
+                            className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-0 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[4.75rem] md:px-2.5"
+                          >
+                            <PencilIcon />
+                            <span className="hidden md:inline">Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void removeItem(item.id)}
+                            disabled={isDeleting || isUpdating}
+                            title="Delete entry"
+                            aria-label="Delete entry"
+                            className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-0 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[5.75rem] md:px-2.5"
+                          >
+                            <TrashIcon />
+                            <span className="hidden md:inline">Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={newTodoEntryName}
+                      onChange={(event) => setNewTodoEntryName(event.target.value)}
+                      placeholder="New todo entry"
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void addTodoEntry()}
+                      disabled={creatingItem}
+                      className="rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Add Entry
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {selectedList.items.length === 0 && (
+                    <p className="py-4 text-center text-sm text-zinc-400">
+                      No todo entries yet. Add your first task above.
+                    </p>
+                  )}
+
+                  {selectedList.items.map((item) => {
+                    const isDeleting = Boolean(deletingItems[item.id]);
+                    const isUpdating = Boolean(updatingItems[item.id]);
+                    const isEditing = todoEditItemId === item.id;
+
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/70 px-3 py-2.5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={item.completed}
+                            onChange={(e) =>
+                              void toggleItemCompleted(item, e.target.checked)
+                            }
+                            disabled={isDeleting || isUpdating}
+                            className="h-4 w-4 rounded accent-cyan-400"
+                            aria-label={`Mark ${item.name} as completed`}
+                          />
+                          <input
+                            value={todoEditName}
+                            onChange={(e) => setTodoEditName(e.target.value)}
+                            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void saveTodoEntry(item)}
+                            disabled={isUpdating}
                             className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {savingItem ? "Saving…" : "Save"}
+                            Save
                           </button>
                           <button
                             type="button"
-                            onClick={cancelEditing}
-                            disabled={savingItem}
+                            onClick={cancelTodoEditing}
+                            disabled={isUpdating}
                             className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Cancel
                           </button>
                         </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
+                          item.completed
+                            ? "border-white/10 bg-zinc-900/70"
+                            : "border-white/10 bg-zinc-950/40"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={item.completed}
+                          onChange={(e) =>
+                            void toggleItemCompleted(item, e.target.checked)
+                          }
+                          disabled={isDeleting || isUpdating}
+                          className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={`Mark ${item.name} as completed`}
+                        />
+                        <span
+                          className={`min-w-0 flex-1 truncate text-sm ${
+                            item.completed
+                              ? "text-zinc-500 line-through"
+                              : "text-zinc-100"
+                          }`}
+                        >
+                          {item.name}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => startTodoEditing(item)}
+                            disabled={isDeleting || isUpdating}
+                            title="Edit entry"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <PencilIcon />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void removeItem(item.id)}
+                            disabled={isDeleting || isUpdating}
+                            title="Delete entry"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-400/30 bg-rose-500/10 text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                }
-
-                // ── VIEW MODE ───────────────────────────────────────────────
-                const qtyNum = toNumber(item.quantity);
-                const priceLabel = isTbd
-                  ? "TBD"
-                  : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme}`}
-                  >
-                    {/* Entry name */}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100 md:flex-none">
-                      {item.name || <span className="italic text-zinc-500">Unnamed entry</span>}
-                    </span>
-
-                    {/* Qty × unit price — hidden on mobile */}
-                    <span className="hidden whitespace-nowrap text-right text-xs text-zinc-400 tabular-nums md:block">
-                      {qtyNum !== 1
-                        ? `${item.quantity} × ${priceLabel}`
-                        : `${priceLabel}`}
-                    </span>
-
-                    {/* Subtotal */}
-                    <span
-                      className={`whitespace-nowrap text-sm font-semibold tabular-nums md:text-right ${subtotalColor}`}
-                    >
-                      {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
-                    </span>
-
-                    {/* Action buttons */}
-                    <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
-                      <button
-                        type="button"
-                        onClick={() => startEditing(item)}
-                        disabled={isDeleting}
-                        title="Edit entry"
-                        aria-label="Edit entry"
-                        className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-0 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[4.75rem] md:px-2.5"
-                      >
-                        <PencilIcon />
-                        <span className="hidden md:inline">Edit</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void removeItem(item.id)}
-                        disabled={isDeleting}
-                        title="Delete entry"
-                        aria-label="Delete entry"
-                        className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-0 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[5.75rem] md:px-2.5"
-                      >
-                        <TrashIcon />
-                        <span className="hidden md:inline">Delete</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         )}
 

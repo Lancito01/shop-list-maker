@@ -4,6 +4,8 @@ import type { EntryCurrency } from "@/lib/currency";
 import { getDb } from "@/lib/db";
 import { shoppingItems, shoppingLists } from "@/lib/db/schema";
 
+export type ListType = "budget" | "todo";
+
 export type ShoppingItemRecord = {
   id: string;
   listId: string;
@@ -11,6 +13,7 @@ export type ShoppingItemRecord = {
   quantity: string;
   unitPrice: string | null;
   currency: EntryCurrency;
+  completed: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -18,6 +21,7 @@ export type ShoppingItemRecord = {
 export type ShoppingListRecord = {
   id: string;
   name: string;
+  type: ListType;
   createdAt: string;
   updatedAt: string;
   items: ShoppingItemRecord[];
@@ -39,6 +43,7 @@ function mapItemRow(row: typeof shoppingItems.$inferSelect): ShoppingItemRecord 
     quantity: String(row.quantity),
     unitPrice: row.unitPrice != null ? String(row.unitPrice) : null,
     currency: row.currency as EntryCurrency,
+    completed: row.completed,
     createdAt: toIsoString(row.createdAt),
     updatedAt: toIsoString(row.updatedAt),
   };
@@ -75,6 +80,7 @@ export async function getListsForUser(userId: string): Promise<ShoppingListRecor
   return listRows.map((list) => ({
     id: list.id,
     name: list.name,
+    type: list.type as ListType,
     createdAt: toIsoString(list.createdAt),
     updatedAt: toIsoString(list.updatedAt),
     items: itemsByList.get(list.id) ?? [],
@@ -84,6 +90,7 @@ export async function getListsForUser(userId: string): Promise<ShoppingListRecor
 export async function createList(
   userId: string,
   name: string,
+  type: ListType,
 ): Promise<Omit<ShoppingListRecord, "items">> {
   const db = getDb();
   const now = new Date();
@@ -93,6 +100,7 @@ export async function createList(
     .values({
       userId,
       name,
+      type,
       updatedAt: now,
     })
     .returning();
@@ -100,6 +108,7 @@ export async function createList(
   return {
     id: list.id,
     name: list.name,
+    type: list.type as ListType,
     createdAt: toIsoString(list.createdAt),
     updatedAt: toIsoString(list.updatedAt),
   };
@@ -134,6 +143,7 @@ export async function createItem(
     quantity: string;
     unitPrice?: string;
     currency?: EntryCurrency;
+    completed?: boolean;
   },
 ): Promise<ShoppingItemRecord | null> {
   const db = getDb();
@@ -151,6 +161,7 @@ export async function createItem(
       quantity: input.quantity,
       currency: input.currency ?? "USD",
       unitPrice: input.unitPrice ?? null,
+      completed: input.completed ?? false,
       updatedAt: now,
     })
     .returning();
@@ -171,6 +182,7 @@ export async function updateItem(
     quantity: string;
     unitPrice?: string;
     currency: EntryCurrency;
+    completed: boolean;
   },
 ): Promise<ShoppingItemRecord | null> {
   const db = getDb();
@@ -196,6 +208,7 @@ export async function updateItem(
       quantity: input.quantity,
       currency: input.currency,
       unitPrice: input.unitPrice ?? null,
+      completed: input.completed,
       updatedAt: now,
     })
     .where(eq(shoppingItems.id, itemId))

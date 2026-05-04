@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  boolean,
   index,
   numeric,
   pgTable,
@@ -35,6 +36,7 @@ export const shoppingLists = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 120 }).notNull(),
+    type: varchar("type", { length: 16 }).default("budget").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -61,6 +63,7 @@ export const shoppingItems = pgTable(
       .notNull(),
     unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
     currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+    completed: boolean("completed").default(false).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

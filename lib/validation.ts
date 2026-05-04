@@ -3,6 +3,7 @@ import { z } from "zod";
 const quantityRegex = /^\d+(\.\d{1,3})?$/;
 const unitPriceRegex = /^-?\d+(\.\d{1,2})?$/;
 const entryCurrencySchema = z.enum(["USD", "EUR", "ARS"]);
+const listTypeSchema = z.enum(["budget", "todo"]);
 
 const normalizedString = z
   .string()
@@ -29,6 +30,7 @@ const optionalUnitPriceString = z
 
 export const createListSchema = z.object({
   name: normalizedString,
+  type: listTypeSchema.optional().default("budget"),
 });
 
 export const createItemSchema = z.object({
@@ -37,6 +39,7 @@ export const createItemSchema = z.object({
   quantity: quantityString,
   unitPrice: optionalUnitPriceString,
   currency: entryCurrencySchema.optional().default("USD"),
+  completed: z.boolean().optional().default(false),
 });
 
 export const updateItemSchema = z.object({
@@ -44,6 +47,7 @@ export const updateItemSchema = z.object({
   quantity: quantityString,
   unitPrice: optionalUnitPriceString,
   currency: entryCurrencySchema,
+  completed: z.boolean(),
 });
 
 export const idParamSchema = z.string().uuid();

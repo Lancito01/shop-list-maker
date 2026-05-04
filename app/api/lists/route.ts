@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const list = await createList(user.id, parsed.data.name);
+    const list = await createList(user.id, parsed.data.name, parsed.data.type);
     return NextResponse.json({ list }, { status: 201 });
   } catch (error) {
     console.error("Failed to create shopping list", error);
