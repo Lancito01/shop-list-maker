@@ -526,7 +526,7 @@ export function ShoppingListApp() {
                 </p>
               )}
               {selectedList.items.length > 0 && (
-                <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_9rem_7.5rem_8.25rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                <div className="hidden md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                   <span>Entry</span>
                   <span className="text-right">Qty x Price</span>
                   <span className="text-right">Subtotal</span>
@@ -648,15 +648,15 @@ export function ShoppingListApp() {
                 return (
                   <div
                     key={item.id}
-                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 sm:grid sm:grid-cols-[minmax(0,1fr)_9rem_7.5rem_8.25rem] sm:gap-3 ${rowTheme}`}
+                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme}`}
                   >
                     {/* Entry name */}
-                    <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100 md:flex-none">
                       {item.name || <span className="italic text-zinc-500">Unnamed entry</span>}
                     </span>
 
                     {/* Qty × unit price — hidden on mobile */}
-                    <span className="hidden whitespace-nowrap text-right text-xs text-zinc-400 tabular-nums sm:block">
+                    <span className="hidden whitespace-nowrap text-right text-xs text-zinc-400 tabular-nums md:block">
                       {qtyNum !== 1
                         ? `${item.quantity} × ${priceLabel}`
                         : priceLabel}
@@ -664,32 +664,34 @@ export function ShoppingListApp() {
 
                     {/* Subtotal */}
                     <span
-                      className={`whitespace-nowrap text-sm font-semibold tabular-nums sm:text-right ${subtotalColor}`}
+                      className={`whitespace-nowrap text-sm font-semibold tabular-nums md:text-right ${subtotalColor}`}
                     >
                       {isTbd ? "TBD" : formatCurrency(subtotal)}
                     </span>
 
                     {/* Action buttons */}
-                    <div className="ml-auto flex shrink-0 items-center justify-end gap-1 sm:ml-0">
+                    <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
                       <button
                         type="button"
                         onClick={() => startEditing(item)}
                         disabled={isDeleting}
                         title="Edit entry"
-                        className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Edit entry"
+                        className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-0 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[4.75rem] md:px-2.5"
                       >
                         <PencilIcon />
-                        <span className="hidden sm:inline">Edit</span>
+                        <span className="hidden md:inline">Edit</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => void removeItem(item.id)}
                         disabled={isDeleting}
                         title="Delete entry"
-                        className="flex items-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Delete entry"
+                        className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-0 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[5.75rem] md:px-2.5"
                       >
                         <TrashIcon />
-                        <span className="hidden sm:inline">Delete</span>
+                        <span className="hidden md:inline">Delete</span>
                       </button>
                     </div>
                   </div>
