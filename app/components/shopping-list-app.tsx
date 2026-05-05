@@ -1648,13 +1648,26 @@ export function ShoppingListApp() {
                                 ? "text-zinc-500"
                                 : "text-zinc-400";
 
+                            const expenseRemainingSubtotalPreferred =
+                              !isTbd &&
+                              !isConversionUnavailable &&
+                              !isIncome &&
+                              appliedSubtotalPreferred != null &&
+                              originalSubtotalPreferred != null
+                                ? Math.max(
+                                    originalSubtotalPreferred - appliedSubtotalPreferred,
+                                    0,
+                                  )
+                                : null;
                             const appliedSubtotalLabel =
                               isTbd
                                 ? "TBD"
                                 : isConversionUnavailable
                                   ? "Rates"
                                   : formatCurrency(
-                                      appliedSubtotalPreferred ?? 0,
+                                      expenseRemainingSubtotalPreferred ??
+                                        appliedSubtotalPreferred ??
+                                        0,
                                       preferredCurrency,
                                     );
                             const originalSubtotalLabel = isTbd
