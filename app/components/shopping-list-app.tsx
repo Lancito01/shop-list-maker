@@ -177,6 +177,7 @@ export function ShoppingListApp() {
   const [todoEditName, setTodoEditName] = useState("");
   const [newItemCustomAmount, setNewItemCustomAmount] = useState(false);
   const [newItemPriceNegative, setNewItemPriceNegative] = useState(false);
+  const [newItemCompleted, setNewItemCompleted] = useState(false);
   const [loadingLists, setLoadingLists] = useState(true);
   const [creatingList, setCreatingList] = useState(false);
   const [creatingItem, setCreatingItem] = useState(false);
@@ -189,6 +190,7 @@ export function ShoppingListApp() {
   const [reorderingItems, setReorderingItems] = useState(false);
   const [reorderingLists, setReorderingLists] = useState(false);
   const [refreshingLists, setRefreshingLists] = useState(false);
+  const [bulkUpdatingEntries, setBulkUpdatingEntries] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<DisplayCurrency>(() => {
     if (typeof window === "undefined") {
       return "USD";
@@ -342,6 +344,12 @@ export function ShoppingListApp() {
     [selectedList],
   );
 
+  const selectedListHasEntries = (selectedList?.items.length ?? 0) > 0;
+  const selectedListAllEntriesChecked = useMemo(
+    () => Boolean(selectedListHasEntries && selectedList?.items.every((item) => item.completed)),
+    [selectedList, selectedListHasEntries],
+  );
+
   const selectedListEntrySignature = useMemo(
     () =>
       selectedList?.items
@@ -416,8 +424,21 @@ export function ShoppingListApp() {
     }),
   );
 
-  const dragDisabled = reorderingItems || savingItem || Boolean(editingDraft) || Boolean(todoEditItemId);
+  const dragDisabled =
+    reorderingItems ||
+    savingItem ||
+    bulkUpdatingEntries ||
+    Boolean(editingDraft) ||
+    Boolean(todoEditItemId);
   const listDragDisabled = reorderingLists || creatingList || loadingLists || refreshingLists;
+  const checkAllEntriesDisabled =
+    !selectedListHasEntries ||
+    bulkUpdatingEntries ||
+    creatingItem ||
+    savingItem ||
+    reorderingItems ||
+    Boolean(editingDraft) ||
+    Boolean(todoEditItemId);
 
   const convertSubtotal = useCallback(
     (subtotal: number, entryCurrency: EntryCurrency): number | null => {
@@ -668,6 +689,58 @@ export function ShoppingListApp() {
     }
   }
 
+  async function setAllEntriesCompleted(completed: boolean) {
+    if (!selectedList) {
+      return;
+    }
+
+    const entriesToUpdate = selectedList.items.filter(
+      (item) => item.completed !== completed,
+    );
+    if (entriesToUpdate.length === 0) {
+      return;
+    }
+
+    setBulkUpdatingEntries(true);
+    setErrorMessage(null);
+    setUpdatingItems((current) => {
+      const next = { ...current };
+      for (const item of entriesToUpdate) {
+        next[item.id] = true;
+      }
+      return next;
+    });
+
+    try {
+      await Promise.all(
+        entriesToUpdate.map((item) =>
+          patchItem(item.id, {
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice ?? undefined,
+            currency: item.currency,
+            completed,
+          }),
+        ),
+      );
+      await loadLists();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to update all entries.";
+      setErrorMessage(message);
+      await loadLists();
+    } finally {
+      setUpdatingItems((current) => {
+        const next = { ...current };
+        for (const item of entriesToUpdate) {
+          next[item.id] = false;
+        }
+        return next;
+      });
+      setBulkUpdatingEntries(false);
+    }
+  }
+
   function startTodoEditing(item: ShoppingItemRecord) {
     setTodoEditItemId(item.id);
     setTodoEditName(item.name);
@@ -846,6 +919,7 @@ export function ShoppingListApp() {
           name: newItem.name,
           quantity: newItemCustomAmount ? newItem.quantity : "1",
           currency: newItem.currency,
+          completed: newItemCompleted,
           ...(finalPrice === undefined ? {} : { unitPrice: finalPrice }),
         }),
       });
@@ -857,6 +931,7 @@ export function ShoppingListApp() {
       setNewItem(defaultNewItem);
       setNewItemCustomAmount(false);
       setNewItemPriceNegative(false);
+      setNewItemCompleted(false);
       await loadLists();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to add item.";
@@ -1279,6 +1354,18 @@ export function ShoppingListApp() {
               <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
               {selectedList.type === "budget" ? (
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void setAllEntriesCompleted(!selectedListAllEntriesChecked)}
+                    disabled={checkAllEntriesDisabled}
+                    className="rounded-full border border-white/20 bg-zinc-800/70 px-3 py-1 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {bulkUpdatingEntries
+                      ? "Updating..."
+                      : selectedListAllEntriesChecked
+                        ? "Uncheck All Entries"
+                        : "Check All Entries"}
+                  </button>
                   <p
                     className={`rounded-full border px-3 py-1 text-sm font-semibold ${
                       selectedListTotals.unavailable
@@ -1368,6 +1455,15 @@ export function ShoppingListApp() {
                         className="rounded accent-cyan-400"
                       />
                       Custom amount
+                    </label>
+                    <label className="flex w-full cursor-pointer select-none items-center gap-2 whitespace-nowrap text-sm text-zinc-400 sm:w-auto">
+                      <input
+                        type="checkbox"
+                        checked={newItemCompleted}
+                        onChange={(event) => setNewItemCompleted(event.target.checked)}
+                        className="rounded accent-cyan-400"
+                      />
+                      Checked
                     </label>
                   </div>
 
