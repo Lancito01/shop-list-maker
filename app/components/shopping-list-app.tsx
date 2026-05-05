@@ -1488,11 +1488,11 @@ export function ShoppingListApp() {
                                   if (isTallMode) {
                                     return (
                                       <div
-                                        className={`space-y-2 rounded-xl border px-3 py-2.5 ${rowTheme} ${
+                                        className={`flex flex-col gap-2 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:items-center md:gap-3 ${rowTheme} ${
                                           isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""
                                         }`}
                                       >
-                                        <div className="flex min-w-0 items-center gap-3">
+                                        <div className="flex min-w-0 items-center gap-3 md:contents">
                                           <input
                                             type="checkbox"
                                             checked={item.completed}
@@ -1516,7 +1516,7 @@ export function ShoppingListApp() {
                                           </button>
                                           <span
                                             ref={(node) => setEntryTitleRef(item.id, node)}
-                                            className={`min-w-0 flex-1 break-words text-sm font-medium leading-snug ${
+                                            className={`min-w-0 flex-1 break-words text-sm font-medium leading-snug md:flex-none md:leading-normal ${
                                               item.completed
                                                 ? "text-zinc-500 line-through"
                                                 : "text-zinc-100"
@@ -1528,9 +1528,9 @@ export function ShoppingListApp() {
                                           </span>
                                         </div>
 
-                                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pl-[3.25rem]">
+                                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pl-[3.25rem] md:contents md:pl-0">
                                           <span
-                                            className={`min-w-0 break-words text-xs tabular-nums ${
+                                            className={`min-w-0 break-words text-xs tabular-nums md:whitespace-nowrap md:text-right ${
                                               item.completed
                                                 ? "text-zinc-500 line-through"
                                                 : "text-zinc-400"
@@ -1542,14 +1542,14 @@ export function ShoppingListApp() {
                                           </span>
 
                                           <span
-                                            className={`whitespace-nowrap text-right text-sm font-semibold tabular-nums ${
+                                            className={`whitespace-nowrap text-right text-sm font-semibold tabular-nums md:text-right ${
                                               item.completed ? "line-through" : ""
                                             } ${subtotalColor}`}
                                           >
                                             {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
                                           </span>
 
-                                          <div className="flex items-center justify-end gap-1.5">
+                                          <div className="flex items-center justify-end gap-1">
                                             {editButton}
                                             {deleteButton}
                                           </div>
@@ -1757,13 +1757,13 @@ export function ShoppingListApp() {
                                 if (isTallMode) {
                                   return (
                                     <div
-                                      className={`space-y-2 rounded-xl border px-3 py-2.5 ${
+                                      className={`flex flex-col gap-2 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_11rem] md:items-center md:gap-3 ${
                                         item.completed
                                           ? "border-white/10 bg-zinc-900/70"
                                           : "border-white/10 bg-zinc-950/40"
                                       } ${isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""}`}
                                     >
-                                      <div className="flex min-w-0 items-center gap-3">
+                                      <div className="flex min-w-0 items-center gap-3 md:contents">
                                         <input
                                           type="checkbox"
                                           checked={item.completed}
@@ -1771,7 +1771,7 @@ export function ShoppingListApp() {
                                             void toggleItemCompleted(item, e.target.checked)
                                           }
                                           disabled={isDeleting || isUpdating}
-                                          className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                          className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 md:mx-auto"
                                           aria-label={`Mark ${item.name} as completed`}
                                         />
                                         <button
@@ -1779,7 +1779,7 @@ export function ShoppingListApp() {
                                           {...attributes}
                                           {...listeners}
                                           disabled={isItemDragDisabled}
-                                          className="flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                                          className="flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40 md:mx-auto"
                                           title="Hold and drag to reorder"
                                           aria-label={`Hold and drag to reorder ${item.name}`}
                                         >
@@ -1787,7 +1787,7 @@ export function ShoppingListApp() {
                                         </button>
                                         <span
                                           ref={(node) => setEntryTitleRef(item.id, node)}
-                                          className={`min-w-0 flex-1 break-words text-sm leading-snug ${
+                                          className={`min-w-0 flex-1 break-words text-sm leading-snug md:flex-none md:leading-normal ${
                                             item.completed
                                               ? "text-zinc-500 line-through"
                                               : "text-zinc-100"
@@ -1798,9 +1798,11 @@ export function ShoppingListApp() {
                                           )}
                                         </span>
                                       </div>
-                                      <div className="flex items-center justify-end gap-1.5 pl-[3.25rem]">
-                                        {editButton}
-                                        {deleteButton}
+                                      <div className="pl-[3.25rem] md:contents md:pl-0">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          {editButton}
+                                          {deleteButton}
+                                        </div>
                                       </div>
                                     </div>
                                   );
@@ -1808,7 +1810,7 @@ export function ShoppingListApp() {
 
                                 return (
                                   <div
-                                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
+                                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_11rem] md:items-center md:gap-3 ${
                                       item.completed
                                         ? "border-white/10 bg-zinc-900/70"
                                         : "border-white/10 bg-zinc-950/40"
@@ -1821,7 +1823,7 @@ export function ShoppingListApp() {
                                         void toggleItemCompleted(item, e.target.checked)
                                       }
                                       disabled={isDeleting || isUpdating}
-                                      className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                      className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 md:mx-auto"
                                       aria-label={`Mark ${item.name} as completed`}
                                     />
                                     <button
@@ -1829,7 +1831,7 @@ export function ShoppingListApp() {
                                       {...attributes}
                                       {...listeners}
                                       disabled={isItemDragDisabled}
-                                      className="flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                                      className="flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40 md:mx-auto"
                                       title="Hold and drag to reorder"
                                       aria-label={`Hold and drag to reorder ${item.name}`}
                                     >
@@ -1837,7 +1839,7 @@ export function ShoppingListApp() {
                                     </button>
                                     <span
                                       ref={(node) => setEntryTitleRef(item.id, node)}
-                                      className={`min-w-0 flex-1 truncate text-sm ${
+                                      className={`min-w-0 flex-1 truncate text-sm md:flex-none ${
                                         item.completed
                                           ? "text-zinc-500 line-through"
                                           : "text-zinc-100"
@@ -1845,7 +1847,7 @@ export function ShoppingListApp() {
                                     >
                                       {item.name}
                                     </span>
-                                    <div className="flex shrink-0 items-center gap-1.5">
+                                    <div className="flex shrink-0 items-center justify-end gap-1.5">
                                       {editButton}
                                       {deleteButton}
                                     </div>
