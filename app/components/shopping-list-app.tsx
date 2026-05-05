@@ -1946,7 +1946,7 @@ export function ShoppingListApp() {
                                         </span>
                                       </div>
 
-                                      <div className="flex min-w-0 items-center gap-2 pl-[3.25rem] md:contents md:pl-0">
+                                      <div className="flex min-w-0 items-center gap-2 justify-between md:contents md:pl-0">
                                         <span className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${qtyPriceColor}`}>
                                           {qtyNum !== 1 ? <>{item.quantity} × {priceDisplay}</> : priceDisplay}
                                         </span>
