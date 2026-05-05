@@ -33,6 +33,10 @@ export const createListSchema = z.object({
   type: listTypeSchema.optional().default("budget"),
 });
 
+export const updateListSchema = z.object({
+  name: normalizedString,
+});
+
 export const createItemSchema = z.object({
   listId: z.string().uuid(),
   name: normalizedString,
@@ -48,6 +52,11 @@ export const updateItemSchema = z.object({
   unitPrice: optionalUnitPriceString,
   currency: entryCurrencySchema,
   completed: z.boolean(),
+});
+
+export const reorderItemsSchema = z.object({
+  listId: z.string().uuid(),
+  itemIds: z.array(z.string().uuid()).min(1),
 });
 
 export const idParamSchema = z.string().uuid();

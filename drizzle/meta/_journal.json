@@ -29,6 +29,13 @@
       "when": 1777937524744,
       "tag": "0003_list_type_and_completed",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777939983548,
+      "tag": "0004_wide_swarm",
+      "breakpoints": true
     }
   ]
 }

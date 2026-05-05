@@ -1,6 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import {
   displayCurrencies,
@@ -92,6 +108,47 @@ function TrashIcon() {
   );
 }
 
+function DragHandleIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="h-3.5 w-3.5 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M7 4a1 1 0 11-2 0 1 1 0 012 0zm0 6a1 1 0 11-2 0 1 1 0 012 0zm-1 7a1 1 0 100-2 1 1 0 000 2zm8-13a1 1 0 11-2 0 1 1 0 012 0zm0 6a1 1 0 11-2 0 1 1 0 012 0zm-1 7a1 1 0 100-2 1 1 0 000 2z" />
+    </svg>
+  );
+}
+
+type SortableRowProps = {
+  id: string;
+  disabled?: boolean;
+  children: (drag: {
+    attributes: ReturnType<typeof useSortable>["attributes"];
+    listeners: ReturnType<typeof useSortable>["listeners"];
+    isDragging: boolean;
+  }) => ReactNode;
+};
+
+function SortableRow({ id, disabled, children }: SortableRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id, disabled });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 2 : 0,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ attributes, listeners, isDragging })}
+    </div>
+  );
+}
+
 export function ShoppingListApp() {
   const [lists, setLists] = useState<ShoppingListRecord[]>([]);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
@@ -110,7 +167,9 @@ export function ShoppingListApp() {
   const [savingItem, setSavingItem] = useState(false);
   const [deletingItems, setDeletingItems] = useState<PendingMap>({});
   const [deletingLists, setDeletingLists] = useState<PendingMap>({});
+  const [renamingLists, setRenamingLists] = useState<PendingMap>({});
   const [editingDraft, setEditingDraft] = useState<EditDraft | null>(null);
+  const [reorderingItems, setReorderingItems] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<DisplayCurrency>(() => {
     if (typeof window === "undefined") {
       return "USD";
@@ -242,6 +301,20 @@ export function ShoppingListApp() {
     () => lists.find((list) => list.id === selectedListId) ?? null,
     [lists, selectedListId],
   );
+
+  const selectedListItemIds = useMemo(
+    () => selectedList?.items.map((item) => item.id) ?? [],
+    [selectedList],
+  );
+
+  const dndSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 220, tolerance: 8 },
+    }),
+  );
+
+  const dragDisabled = reorderingItems || savingItem || Boolean(editingDraft) || Boolean(todoEditItemId);
 
   const convertSubtotal = useCallback(
     (subtotal: number, entryCurrency: EntryCurrency): number | null => {
@@ -477,7 +550,7 @@ export function ShoppingListApp() {
   }
 
   async function removeList(listId: string) {
-    if (!window.confirm("Delete this budget and all its entries?")) {
+    if (!window.confirm("Delete this list and all its entries?")) {
       return;
     }
 
@@ -552,6 +625,104 @@ export function ShoppingListApp() {
     }
   }
 
+  async function renameList(listId: string, currentName: string) {
+    const proposedName = window.prompt("Rename list", currentName);
+    if (proposedName == null) {
+      return;
+    }
+
+    const trimmedName = proposedName.trim();
+    if (!trimmedName) {
+      setErrorMessage("List name cannot be empty.");
+      return;
+    }
+
+    if (trimmedName === currentName) {
+      return;
+    }
+
+    setRenamingLists((current) => ({ ...current, [listId]: true }));
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch(`/api/lists/${listId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmedName }),
+      });
+      const payload = (await response.json()) as MutationErrorResponse;
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to rename list.");
+      }
+
+      await loadLists();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to rename list.";
+      setErrorMessage(message);
+    } finally {
+      setRenamingLists((current) => ({ ...current, [listId]: false }));
+    }
+  }
+
+  async function persistReorderedItems(listId: string, itemIds: string[]) {
+    const response = await fetch("/api/items/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listId, itemIds }),
+    });
+    const payload = (await response.json()) as MutationErrorResponse;
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Unable to reorder entries.");
+    }
+  }
+
+  async function handleEntriesDragEnd(event: DragEndEvent) {
+    if (!selectedList) {
+      return;
+    }
+
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : null;
+    if (!overId || activeId === overId) {
+      return;
+    }
+
+    const oldIndex = selectedList.items.findIndex((item) => item.id === activeId);
+    const newIndex = selectedList.items.findIndex((item) => item.id === overId);
+    if (oldIndex < 0 || newIndex < 0) {
+      return;
+    }
+
+    const reorderedItems = arrayMove(selectedList.items, oldIndex, newIndex).map(
+      (item, index) => ({
+        ...item,
+        sortOrder: index,
+      }),
+    );
+
+    setLists((currentLists) =>
+      currentLists.map((list) =>
+        list.id === selectedList.id ? { ...list, items: reorderedItems } : list,
+      ),
+    );
+    setReorderingItems(true);
+    setErrorMessage(null);
+
+    try {
+      await persistReorderedItems(
+        selectedList.id,
+        reorderedItems.map((item) => item.id),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to reorder entries.";
+      setErrorMessage(message);
+      await loadLists();
+    } finally {
+      setReorderingItems(false);
+    }
+  }
+
   async function addTodoEntry() {
     if (!selectedListId || selectedList?.type !== "todo") {
       setErrorMessage("Select a todo list before adding an entry.");
@@ -598,7 +769,7 @@ export function ShoppingListApp() {
   }
 
   async function removeItem(itemId: string) {
-    if (!window.confirm("Remove this entry from the budget?")) {
+    if (!window.confirm("Remove this entry from the list?")) {
       return;
     }
 
@@ -677,6 +848,8 @@ export function ShoppingListApp() {
           )}
           {lists.map((list) => {
             const active = list.id === selectedListId;
+            const isDeleting = Boolean(deletingLists[list.id]);
+            const isRenaming = Boolean(renamingLists[list.id]);
             return (
               <div
                 key={list.id}
@@ -721,17 +894,34 @@ export function ShoppingListApp() {
                     <p className="truncate text-left text-xs text-zinc-500">Todo list</p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void removeList(list.id);
-                  }}
-                  disabled={deletingLists[list.id]}
-                  className="rounded px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Delete
-                </button>
+                <div className="ml-2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void renameList(list.id, list.name);
+                    }}
+                    disabled={isRenaming || isDeleting}
+                    title="Rename list"
+                    className="flex h-7 items-center gap-1 rounded-md border border-white/15 bg-zinc-800/60 px-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <PencilIcon />
+                    <span className="hidden md:inline">
+                      {isRenaming ? "Saving..." : "Rename"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void removeList(list.id);
+                    }}
+                    disabled={isDeleting || isRenaming}
+                    className="rounded px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -888,218 +1078,278 @@ export function ShoppingListApp() {
                     </p>
                   )}
                   {selectedList.items.length > 0 && (
-                    <div className="hidden md:grid md:grid-cols-[2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                      <span className="text-center">Done</span>
-                      <span>Entry</span>
-                      <span className="text-right">Qty x Price</span>
-                      <span className="text-right">Subtotal</span>
-                      <span className="text-right">Actions</span>
-                    </div>
-                  )}
-
-                  {selectedList.items.map((item) => {
-                    const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
-                    const isTbd = !item.unitPrice;
-                    const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
-                    const isDeleting = Boolean(deletingItems[item.id]);
-                    const isUpdating = Boolean(updatingItems[item.id]);
-                    const isThisEditing = editingDraft?.itemId === item.id;
-
-                    const rowTheme = item.completed
-                      ? "border-white/10 bg-zinc-900/70"
-                      : isTbd
-                        ? "border-amber-400/30 bg-amber-500/5"
-                        : isNeg
-                          ? "border-emerald-400/40 bg-emerald-500/15"
-                          : "border-white/10 bg-zinc-950/40";
-
-                    const subtotalColor = item.completed
-                      ? "text-zinc-500"
-                      : isTbd
-                        ? "text-amber-300"
-                        : isNeg
-                          ? "text-emerald-300"
-                          : "text-zinc-100";
-
-                    if (isThisEditing && editingDraft) {
-                      return (
-                        <div
-                          key={item.id}
-                          className={`rounded-xl border p-3 space-y-2 ${rowTheme}`}
-                        >
-                          <input
-                            value={editingDraft.name}
-                            onChange={(e) =>
-                              setEditingDraft((d) => d ? { ...d, name: e.target.value } : d)
-                            }
-                            placeholder="Entry name"
-                            className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
-                          />
-
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950/70 px-2.5 py-2 text-xs text-zinc-300">
-                              <input
-                                type="checkbox"
-                                checked={editingDraft.completed}
-                                onChange={(e) =>
-                                  setEditingDraft((d) =>
-                                    d ? { ...d, completed: e.target.checked } : d,
-                                  )
-                                }
-                                className="rounded accent-cyan-400"
-                              />
-                              Completed
-                            </label>
-                            <input
-                              value={editingDraft.quantity}
-                              onChange={(e) =>
-                                setEditingDraft((d) => d ? { ...d, quantity: e.target.value } : d)
-                              }
-                              inputMode="decimal"
-                              placeholder="Qty"
-                              className="w-16 rounded-lg border border-white/10 bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
-                            />
-
-                            <div className="flex flex-1 items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setEditingDraft((d) => d ? { ...d, isNeg: !d.isNeg } : d)
-                                }
-                                title={
-                                  editingDraft.isNeg
-                                    ? "Currently: income (−). Click to switch to expense (+)."
-                                    : "Currently: expense (+). Click to switch to income (−)."
-                                }
-                                className={`rounded-lg border px-2.5 py-2 text-sm font-bold transition ${
-                                  editingDraft.isNeg
-                                    ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                                    : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
-                                }`}
-                              >
-                                {editingDraft.isNeg ? "−" : "+"}
-                              </button>
-                              <input
-                                value={editingDraft.absPrice}
-                                onChange={(e) =>
-                                  setEditingDraft((d) => d ? { ...d, absPrice: e.target.value } : d)
-                                }
-                                inputMode="decimal"
-                                placeholder="Price (TBD)"
-                                className="min-w-0 flex-1 rounded-lg border bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:outline-none border-white/10 focus:border-cyan-400/60"
-                              />
-                              <select
-                                value={editingDraft.currency}
-                                onChange={(e) =>
-                                  setEditingDraft((d) =>
-                                    d ? { ...d, currency: e.target.value as EntryCurrency } : d,
-                                  )
-                                }
-                                className="w-20 rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
-                              >
-                                {entryCurrencies.map((currency) => (
-                                  <option key={currency} value={currency}>
-                                    {currency}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="ml-auto flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => void saveEditedItem()}
-                                disabled={savingItem}
-                                className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {savingItem ? "Saving…" : "Save"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={cancelEditing}
-                                disabled={savingItem}
-                                className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    const qtyNum = toNumber(item.quantity);
-                    const priceLabel = isTbd
-                      ? "TBD"
-                      : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
-
-                    return (
-                      <div
-                        key={item.id}
-                        className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={item.completed}
-                          onChange={(e) =>
-                            void toggleItemCompleted(item, e.target.checked)
-                          }
-                          disabled={isDeleting || isUpdating}
-                          className="mx-auto h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-                          aria-label={`Mark ${item.name} as completed`}
-                        />
-
-                        <span
-                          className={`min-w-0 flex-1 truncate text-sm font-medium md:flex-none ${
-                            item.completed ? "text-zinc-500 line-through" : "text-zinc-100"
-                          }`}
-                        >
-                          {item.name || <span className="italic text-zinc-500">Unnamed entry</span>}
-                        </span>
-
-                        <span
-                          className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${
-                            item.completed ? "text-zinc-500 line-through" : "text-zinc-400"
-                          }`}
-                        >
-                          {qtyNum !== 1 ? `${item.quantity} × ${priceLabel}` : `${priceLabel}`}
-                        </span>
-
-                        <span
-                          className={`whitespace-nowrap text-sm font-semibold tabular-nums md:text-right ${
-                            item.completed ? "line-through" : ""
-                          } ${subtotalColor}`}
-                        >
-                          {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
-                        </span>
-
-                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
-                          <button
-                            type="button"
-                            onClick={() => startEditing(item)}
-                            disabled={isDeleting || isUpdating}
-                            title="Edit entry"
-                            aria-label="Edit entry"
-                            className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-0 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[4.75rem] md:px-2.5"
-                          >
-                            <PencilIcon />
-                            <span className="hidden md:inline">Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void removeItem(item.id)}
-                            disabled={isDeleting || isUpdating}
-                            title="Delete entry"
-                            aria-label="Delete entry"
-                            className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-0 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[5.75rem] md:px-2.5"
-                          >
-                            <TrashIcon />
-                            <span className="hidden md:inline">Delete</span>
-                          </button>
-                        </div>
+                    <>
+                      <div className="hidden md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                        <span className="text-center">Done</span>
+                        <span className="text-center">Move</span>
+                        <span>Entry</span>
+                        <span className="text-right">Qty x Price</span>
+                        <span className="text-right">Subtotal</span>
+                        <span className="text-right">Actions</span>
                       </div>
-                    );
-                  })}
+                      <DndContext
+                        sensors={dndSensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={(event) => {
+                          void handleEntriesDragEnd(event);
+                        }}
+                      >
+                        <SortableContext
+                          items={selectedListItemIds}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {selectedList.items.map((item) => {
+                            const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
+                            const isTbd = !item.unitPrice;
+                            const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
+                            const isDeleting = Boolean(deletingItems[item.id]);
+                            const isUpdating = Boolean(updatingItems[item.id]);
+                            const isThisEditing = editingDraft?.itemId === item.id;
+                            const isItemDragDisabled = dragDisabled || isDeleting || isUpdating;
+
+                            const rowTheme = item.completed
+                              ? "border-white/10 bg-zinc-900/70"
+                              : isTbd
+                                ? "border-amber-400/30 bg-amber-500/5"
+                                : isNeg
+                                  ? "border-emerald-400/40 bg-emerald-500/15"
+                                  : "border-white/10 bg-zinc-950/40";
+
+                            const subtotalColor = item.completed
+                              ? "text-zinc-500"
+                              : isTbd
+                                ? "text-amber-300"
+                                : isNeg
+                                  ? "text-emerald-300"
+                                  : "text-zinc-100";
+
+                            return (
+                              <SortableRow
+                                key={item.id}
+                                id={item.id}
+                                disabled={isItemDragDisabled}
+                              >
+                                {({ attributes, listeners, isDragging }) => {
+                                  if (isThisEditing && editingDraft) {
+                                    return (
+                                      <div
+                                        className={`rounded-xl border p-3 space-y-2 ${rowTheme}`}
+                                      >
+                                        <input
+                                          value={editingDraft.name}
+                                          onChange={(e) =>
+                                            setEditingDraft((d) =>
+                                              d ? { ...d, name: e.target.value } : d,
+                                            )
+                                          }
+                                          placeholder="Entry name"
+                                          className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                                        />
+
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950/70 px-2.5 py-2 text-xs text-zinc-300">
+                                            <input
+                                              type="checkbox"
+                                              checked={editingDraft.completed}
+                                              onChange={(e) =>
+                                                setEditingDraft((d) =>
+                                                  d
+                                                    ? { ...d, completed: e.target.checked }
+                                                    : d,
+                                                )
+                                              }
+                                              className="rounded accent-cyan-400"
+                                            />
+                                            Completed
+                                          </label>
+                                          <input
+                                            value={editingDraft.quantity}
+                                            onChange={(e) =>
+                                              setEditingDraft((d) =>
+                                                d ? { ...d, quantity: e.target.value } : d,
+                                              )
+                                            }
+                                            inputMode="decimal"
+                                            placeholder="Qty"
+                                            className="w-16 rounded-lg border border-white/10 bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                                          />
+
+                                          <div className="flex flex-1 items-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setEditingDraft((d) =>
+                                                  d ? { ...d, isNeg: !d.isNeg } : d,
+                                                )
+                                              }
+                                              title={
+                                                editingDraft.isNeg
+                                                  ? "Currently: income (−). Click to switch to expense (+)."
+                                                  : "Currently: expense (+). Click to switch to income (−)."
+                                              }
+                                              className={`rounded-lg border px-2.5 py-2 text-sm font-bold transition ${
+                                                editingDraft.isNeg
+                                                  ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                                                  : "border-white/15 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700"
+                                              }`}
+                                            >
+                                              {editingDraft.isNeg ? "−" : "+"}
+                                            </button>
+                                            <input
+                                              value={editingDraft.absPrice}
+                                              onChange={(e) =>
+                                                setEditingDraft((d) =>
+                                                  d ? { ...d, absPrice: e.target.value } : d,
+                                                )
+                                              }
+                                              inputMode="decimal"
+                                              placeholder="Price (TBD)"
+                                              className="min-w-0 flex-1 rounded-lg border bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:outline-none border-white/10 focus:border-cyan-400/60"
+                                            />
+                                            <select
+                                              value={editingDraft.currency}
+                                              onChange={(e) =>
+                                                setEditingDraft((d) =>
+                                                  d
+                                                    ? {
+                                                        ...d,
+                                                        currency: e.target.value as EntryCurrency,
+                                                      }
+                                                    : d,
+                                                )
+                                              }
+                                              className="w-20 rounded-lg border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
+                                            >
+                                              {entryCurrencies.map((currency) => (
+                                                <option key={currency} value={currency}>
+                                                  {currency}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          <div className="ml-auto flex gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => void saveEditedItem()}
+                                              disabled={savingItem}
+                                              className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                              {savingItem ? "Saving…" : "Save"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={cancelEditing}
+                                              disabled={savingItem}
+                                              className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  const qtyNum = toNumber(item.quantity);
+                                  const priceLabel = isTbd
+                                    ? "TBD"
+                                    : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
+
+                                  return (
+                                    <div
+                                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme} ${
+                                        isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={item.completed}
+                                        onChange={(e) =>
+                                          void toggleItemCompleted(item, e.target.checked)
+                                        }
+                                        disabled={isDeleting || isUpdating}
+                                        className="mx-auto h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                        aria-label={`Mark ${item.name} as completed`}
+                                      />
+                                      <button
+                                        type="button"
+                                        {...attributes}
+                                        {...listeners}
+                                        disabled={isItemDragDisabled}
+                                        className="mx-auto flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                                        title="Hold and drag to reorder"
+                                        aria-label={`Hold and drag to reorder ${item.name}`}
+                                      >
+                                        <DragHandleIcon />
+                                      </button>
+
+                                      <span
+                                        className={`min-w-0 flex-1 truncate text-sm font-medium md:flex-none ${
+                                          item.completed
+                                            ? "text-zinc-500 line-through"
+                                            : "text-zinc-100"
+                                        }`}
+                                      >
+                                        {item.name || (
+                                          <span className="italic text-zinc-500">Unnamed entry</span>
+                                        )}
+                                      </span>
+
+                                      <span
+                                        className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${
+                                          item.completed
+                                            ? "text-zinc-500 line-through"
+                                            : "text-zinc-400"
+                                        }`}
+                                      >
+                                        {qtyNum !== 1
+                                          ? `${item.quantity} × ${priceLabel}`
+                                          : `${priceLabel}`}
+                                      </span>
+
+                                      <span
+                                        className={`whitespace-nowrap text-sm font-semibold tabular-nums md:text-right ${
+                                          item.completed ? "line-through" : ""
+                                        } ${subtotalColor}`}
+                                      >
+                                        {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
+                                      </span>
+
+                                      <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => startEditing(item)}
+                                          disabled={isDeleting || isUpdating}
+                                          title="Edit entry"
+                                          aria-label="Edit entry"
+                                          className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-0 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[4.75rem] md:px-2.5"
+                                        >
+                                          <PencilIcon />
+                                          <span className="hidden md:inline">Edit</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void removeItem(item.id)}
+                                          disabled={isDeleting || isUpdating}
+                                          title="Delete entry"
+                                          aria-label="Delete entry"
+                                          className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-0 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[5.75rem] md:px-2.5"
+                                        >
+                                          <TrashIcon />
+                                          <span className="hidden md:inline">Delete</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                }}
+                              </SortableRow>
+                            );
+                          })}
+                        </SortableContext>
+                      </DndContext>
+                    </>
+                  )}
                 </div>
               </>
             ) : (
@@ -1129,104 +1379,136 @@ export function ShoppingListApp() {
                       No todo entries yet. Add your first task above.
                     </p>
                   )}
-
-                  {selectedList.items.map((item) => {
-                    const isDeleting = Boolean(deletingItems[item.id]);
-                    const isUpdating = Boolean(updatingItems[item.id]);
-                    const isEditing = todoEditItemId === item.id;
-
-                    if (isEditing) {
-                      return (
-                        <div
-                          key={item.id}
-                          className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/70 px-3 py-2.5"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={item.completed}
-                            onChange={(e) =>
-                              void toggleItemCompleted(item, e.target.checked)
-                            }
-                            disabled={isDeleting || isUpdating}
-                            className="h-4 w-4 rounded accent-cyan-400"
-                            aria-label={`Mark ${item.name} as completed`}
-                          />
-                          <input
-                            value={todoEditName}
-                            onChange={(e) => setTodoEditName(e.target.value)}
-                            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void saveTodoEntry(item)}
-                            disabled={isUpdating}
-                            className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelTodoEditing}
-                            disabled={isUpdating}
-                            className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div
-                        key={item.id}
-                        className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
-                          item.completed
-                            ? "border-white/10 bg-zinc-900/70"
-                            : "border-white/10 bg-zinc-950/40"
-                        }`}
+                  {selectedList.items.length > 0 && (
+                    <DndContext
+                      sensors={dndSensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(event) => {
+                        void handleEntriesDragEnd(event);
+                      }}
+                    >
+                      <SortableContext
+                        items={selectedListItemIds}
+                        strategy={verticalListSortingStrategy}
                       >
-                        <input
-                          type="checkbox"
-                          checked={item.completed}
-                          onChange={(e) =>
-                            void toggleItemCompleted(item, e.target.checked)
-                          }
-                          disabled={isDeleting || isUpdating}
-                          className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
-                          aria-label={`Mark ${item.name} as completed`}
-                        />
-                        <span
-                          className={`min-w-0 flex-1 truncate text-sm ${
-                            item.completed
-                              ? "text-zinc-500 line-through"
-                              : "text-zinc-100"
-                          }`}
-                        >
-                          {item.name}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => startTodoEditing(item)}
-                            disabled={isDeleting || isUpdating}
-                            title="Edit entry"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <PencilIcon />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void removeItem(item.id)}
-                            disabled={isDeleting || isUpdating}
-                            title="Delete entry"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-400/30 bg-rose-500/10 text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <TrashIcon />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        {selectedList.items.map((item) => {
+                          const isDeleting = Boolean(deletingItems[item.id]);
+                          const isUpdating = Boolean(updatingItems[item.id]);
+                          const isEditing = todoEditItemId === item.id;
+                          const isItemDragDisabled = dragDisabled || isDeleting || isUpdating;
+
+                          return (
+                            <SortableRow
+                              key={item.id}
+                              id={item.id}
+                              disabled={isItemDragDisabled}
+                            >
+                              {({ attributes, listeners, isDragging }) => {
+                                if (isEditing) {
+                                  return (
+                                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/70 px-3 py-2.5">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.completed}
+                                        onChange={(e) =>
+                                          void toggleItemCompleted(item, e.target.checked)
+                                        }
+                                        disabled={isDeleting || isUpdating}
+                                        className="h-4 w-4 rounded accent-cyan-400"
+                                        aria-label={`Mark ${item.name} as completed`}
+                                      />
+                                      <input
+                                        value={todoEditName}
+                                        onChange={(e) => setTodoEditName(e.target.value)}
+                                        className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => void saveTodoEntry(item)}
+                                        disabled={isUpdating}
+                                        className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={cancelTodoEditing}
+                                        disabled={isUpdating}
+                                        className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div
+                                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${
+                                      item.completed
+                                        ? "border-white/10 bg-zinc-900/70"
+                                        : "border-white/10 bg-zinc-950/40"
+                                    } ${isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={item.completed}
+                                      onChange={(e) =>
+                                        void toggleItemCompleted(item, e.target.checked)
+                                      }
+                                      disabled={isDeleting || isUpdating}
+                                      className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                      aria-label={`Mark ${item.name} as completed`}
+                                    />
+                                    <button
+                                      type="button"
+                                      {...attributes}
+                                      {...listeners}
+                                      disabled={isItemDragDisabled}
+                                      className="flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                                      title="Hold and drag to reorder"
+                                      aria-label={`Hold and drag to reorder ${item.name}`}
+                                    >
+                                      <DragHandleIcon />
+                                    </button>
+                                    <span
+                                      className={`min-w-0 flex-1 truncate text-sm ${
+                                        item.completed
+                                          ? "text-zinc-500 line-through"
+                                          : "text-zinc-100"
+                                      }`}
+                                    >
+                                      {item.name}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => startTodoEditing(item)}
+                                        disabled={isDeleting || isUpdating}
+                                        title="Edit entry"
+                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        <PencilIcon />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void removeItem(item.id)}
+                                        disabled={isDeleting || isUpdating}
+                                        title="Delete entry"
+                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-400/30 bg-rose-500/10 text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        <TrashIcon />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              }}
+                            </SortableRow>
+                          );
+                        })}
+                      </SortableContext>
+                    </DndContext>
+                  )}
                 </div>
               </>
             )}

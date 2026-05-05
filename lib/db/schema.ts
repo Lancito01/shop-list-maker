@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
   boolean,
+  integer,
   index,
   numeric,
   pgTable,
@@ -61,6 +62,7 @@ export const shoppingItems = pgTable(
     quantity: numeric("quantity", { precision: 12, scale: 3 })
       .default("1")
       .notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
     unitPrice: numeric("unit_price", { precision: 12, scale: 2 }),
     currency: varchar("currency", { length: 3 }).default("USD").notNull(),
     completed: boolean("completed").default(false).notNull(),
