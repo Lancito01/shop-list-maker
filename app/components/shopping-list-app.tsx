@@ -124,12 +124,19 @@ function DragHandleIcon() {
 
 function RefreshIcon() {
   return (
-    <span
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="h-3.5 w-3.5 shrink-0"
       aria-hidden="true"
-      className="font-mono text-[0.8rem] font-semibold leading-none"
     >
-      &lt;&gt;
-    </span>
+      <path
+        fillRule="evenodd"
+        d="M15.312 7.325a.75.75 0 01-1.06-.013 5.25 5.25 0 10.944 5.786.75.75 0 111.38.588A6.75 6.75 0 113.25 10.25V8.5a.75.75 0 011.5 0v2.5a.75.75 0 01-.75.75H1.5a.75.75 0 010-1.5h1.038a8.25 8.25 0 1014.308-4.004.75.75 0 01.013 1.06z"
+        clipRule="evenodd"
+      />
+    </svg>
   );
 }
 
@@ -868,8 +875,8 @@ export function ShoppingListApp() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[300px_1fr] lg:items-start">
-      <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur lg:sticky lg:top-4 lg:self-start">
+    <div className="flex flex-col gap-6">
+      <aside className="w-full rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
         <div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
