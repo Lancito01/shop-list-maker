@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d1226394-e3f4-41b4-ba92-ee8d2c767827" name="Changes" comment="" />
+    <list default="true" id="d1226394-e3f4-41b4-ba92-ee8d2c767827" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/components/shopping-list-app.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/components/shopping-list-app.tsx" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -86,7 +89,7 @@
       <workItem from="1777937463831" duration="3152000" />
       <workItem from="1778019337338" duration="891000" />
       <workItem from="1778020242883" duration="58000" />
-      <workItem from="1778020341304" duration="1867000" />
+      <workItem from="1778020341304" duration="2337000" />
     </task>
     <servers />
   </component>
