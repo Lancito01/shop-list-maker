@@ -868,9 +868,9 @@ export function ShoppingListApp() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-      <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
-        <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-3 border-b border-white/10 bg-zinc-900/95 px-4 py-4 backdrop-blur">
+    <div className="grid gap-6 lg:grid-cols-[300px_1fr] lg:items-start">
+      <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur lg:sticky lg:top-4 lg:self-start">
+        <div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-semibold text-zinc-100">Your Lists</h2>
@@ -927,7 +927,7 @@ export function ShoppingListApp() {
           </div>
         </div>
 
-        <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+        <div className="mt-4 space-y-2">
           {loadingLists && <p className="text-base text-zinc-400">Loading lists...</p>}
           {!loadingLists && lists.length === 0 && (
             <p className="text-base text-zinc-400">Create your first list.</p>
@@ -993,7 +993,7 @@ export function ShoppingListApp() {
                             </button>
                           </div>
                           <div className="min-w-0 flex-1 cursor-pointer">
-                            <p className="text-left text-base font-medium leading-tight break-words text-zinc-100">
+                            <p className="truncate text-left text-base font-medium text-zinc-100">
                               {list.name}
                             </p>
                             {list.type === "budget" ? (
