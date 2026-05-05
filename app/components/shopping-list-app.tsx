@@ -482,6 +482,107 @@ export function ShoppingListApp() {
     [selectedList],
   );
 
+  const budgetAppliedSubtotalsByItemId = useMemo(() => {
+    const appliedSubtotals = new Map<
+      string,
+      { appliedPreferred: number | null; originalPreferred: number | null }
+    >();
+    if (!selectedList || selectedList.type !== "budget") {
+      return appliedSubtotals;
+    }
+
+    type IncomeSource = {
+      itemId: string;
+      remaining: number;
+    };
+
+    const incomeSources: IncomeSource[] = [];
+
+    for (const item of selectedList.items) {
+      if (!item.unitPrice) {
+        appliedSubtotals.set(item.id, {
+          appliedPreferred: null,
+          originalPreferred: null,
+        });
+        continue;
+      }
+
+      const subtotalOriginal = toNumber(item.quantity) * toNumber(item.unitPrice);
+      const subtotalPreferred = convertSubtotal(subtotalOriginal, item.currency);
+      if (subtotalPreferred == null) {
+        appliedSubtotals.set(item.id, {
+          appliedPreferred: null,
+          originalPreferred: null,
+        });
+        continue;
+      }
+
+      if (subtotalPreferred < 0) {
+        if (item.completed) {
+          incomeSources.push({
+            itemId: item.id,
+            remaining: Math.abs(subtotalPreferred),
+          });
+        }
+
+        appliedSubtotals.set(item.id, {
+          appliedPreferred: item.completed ? subtotalPreferred : 0,
+          originalPreferred: subtotalPreferred,
+        });
+        continue;
+      }
+
+      appliedSubtotals.set(item.id, {
+        appliedPreferred: 0,
+        originalPreferred: subtotalPreferred,
+      });
+    }
+
+    for (const item of selectedList.items) {
+      if (!item.unitPrice || !item.completed) {
+        continue;
+      }
+
+      const subtotalOriginal = toNumber(item.quantity) * toNumber(item.unitPrice);
+      const subtotalPreferred = convertSubtotal(subtotalOriginal, item.currency);
+      if (subtotalPreferred == null || subtotalPreferred <= 0) {
+        continue;
+      }
+
+      let remainingExpense = subtotalPreferred;
+      for (const source of incomeSources) {
+        if (remainingExpense <= 0) {
+          break;
+        }
+        if (source.remaining <= 0) {
+          continue;
+        }
+
+        const drawnAmount = Math.min(source.remaining, remainingExpense);
+        source.remaining -= drawnAmount;
+        remainingExpense -= drawnAmount;
+      }
+
+      appliedSubtotals.set(item.id, {
+        appliedPreferred: subtotalPreferred - remainingExpense,
+        originalPreferred: subtotalPreferred,
+      });
+    }
+
+    for (const source of incomeSources) {
+      const current = appliedSubtotals.get(source.itemId);
+      appliedSubtotals.set(
+        source.itemId,
+        {
+          appliedPreferred: source.remaining === 0 ? 0 : -source.remaining,
+          originalPreferred: current?.originalPreferred ?? null,
+        },
+      );
+    }
+
+    return appliedSubtotals;
+  }, [convertSubtotal, selectedList]);
+
   function startEditing(item: ShoppingItemRecord) {
     const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
     setEditingDraft({
@@ -577,6 +678,10 @@ export function ShoppingListApp() {
   async function saveEditedItem() {
     if (!editingDraft) return;
 
+    const editingItem = selectedList?.items.find(
+      (item) => item.id === editingDraft.itemId,
+    );
+
     const trimmedPrice = editingDraft.absPrice.trim();
     const finalPrice =
       trimmedPrice === ""
@@ -594,6 +699,7 @@ export function ShoppingListApp() {
         quantity: editingDraft.quantity,
         currency: editingDraft.currency,
         unitPrice: finalPrice,
+        completed: editingItem?.completed ?? false,
       });
 
       setEditingDraft(null);
@@ -1275,7 +1381,8 @@ export function ShoppingListApp() {
                   )}
                   {selectedList.items.length > 0 && (
                     <>
-                      <div className="hidden md:grid md:grid-cols-[2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      <div className="hidden md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                        <span className="text-center">Check</span>
                         <span className="text-center">Move</span>
                         <span>Entry</span>
                         <span className="text-right">Qty x Price</span>
@@ -1296,24 +1403,103 @@ export function ShoppingListApp() {
                           {selectedList.items.map((item) => {
                             const isNeg = Boolean(item.unitPrice && item.unitPrice.startsWith("-"));
                             const isTbd = !item.unitPrice;
-                            const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
+                            const subtotalOriginal = toNumber(item.quantity) * toNumber(item.unitPrice);
+                            const isIncome = !isTbd && isNeg;
+                            const subtotalSummary = budgetAppliedSubtotalsByItemId.get(item.id);
+                            const appliedSubtotalPreferred =
+                              subtotalSummary?.appliedPreferred ??
+                              (isTbd ? null : convertSubtotal(subtotalOriginal, item.currency));
+                            const originalSubtotalPreferred =
+                              subtotalSummary?.originalPreferred ??
+                              (isTbd ? null : convertSubtotal(subtotalOriginal, item.currency));
                             const isDeleting = Boolean(deletingItems[item.id]);
                             const isUpdating = Boolean(updatingItems[item.id]);
                             const isThisEditing = editingDraft?.itemId === item.id;
                             const isItemDragDisabled = dragDisabled || isDeleting || isUpdating;
                             const isTallMode = Boolean(entryTallModeById[item.id]);
+                            const epsilon = 0.000001;
+                            const isConversionUnavailable =
+                              !isTbd && originalSubtotalPreferred == null;
+                            const isSourceDepleted =
+                              isIncome &&
+                              appliedSubtotalPreferred != null &&
+                              Math.abs(appliedSubtotalPreferred) <= epsilon;
+                            const isPendingExpense =
+                              !isTbd &&
+                              !isConversionUnavailable &&
+                              !isIncome &&
+                              item.completed &&
+                              appliedSubtotalPreferred != null &&
+                              originalSubtotalPreferred != null &&
+                              originalSubtotalPreferred - appliedSubtotalPreferred > epsilon;
 
                             const rowTheme = isTbd
                               ? "border-amber-400/30 bg-amber-500/5"
-                              : isNeg
-                                ? "border-emerald-400/40 bg-emerald-500/15"
-                                : "border-white/10 bg-zinc-950/40";
+                              : isConversionUnavailable
+                                ? item.completed
+                                  ? "border-rose-400/35 bg-rose-500/10"
+                                  : "border-rose-400/20 bg-zinc-900/60"
+                              : isIncome
+                                ? item.completed
+                                  ? isSourceDepleted
+                                    ? "border-emerald-500/30 bg-emerald-500/5"
+                                    : "border-emerald-400/40 bg-emerald-500/15"
+                                  : "border-emerald-500/20 bg-zinc-900/60"
+                                : item.completed
+                                  ? isPendingExpense
+                                    ? "border-amber-400/35 bg-amber-500/10"
+                                    : "border-white/10 bg-zinc-950/40"
+                                  : "border-white/10 bg-zinc-900/70";
 
-                            const subtotalColor = isTbd
+                            const appliedSubtotalColor = isTbd
                               ? "text-amber-300"
-                              : isNeg
-                                ? "text-emerald-300"
-                                : "text-zinc-100";
+                              : isConversionUnavailable
+                                ? "text-rose-300"
+                              : isIncome
+                                ? item.completed
+                                  ? isSourceDepleted
+                                    ? "text-emerald-200/75"
+                                    : "text-emerald-300"
+                                  : "text-emerald-300/60"
+                                : item.completed
+                                  ? isPendingExpense
+                                    ? "text-amber-200"
+                                    : "text-zinc-100"
+                                  : "text-zinc-500";
+
+                            const originalSubtotalColor = isTbd
+                              ? "text-amber-300/70"
+                              : isIncome
+                                ? "text-emerald-200/70"
+                                : "text-zinc-500";
+
+                            const entryTitleColor = isTbd
+                              ? "text-zinc-100"
+                              : isIncome
+                                ? item.completed
+                                  ? "text-zinc-100"
+                                  : "text-emerald-200/65"
+                                : item.completed
+                                  ? "text-zinc-100"
+                                  : "text-zinc-500";
+
+                            const qtyPriceColor =
+                              !isTbd && !isIncome && !item.completed
+                                ? "text-zinc-500"
+                                : "text-zinc-400";
+
+                            const appliedSubtotalLabel =
+                              isTbd
+                                ? "TBD"
+                                : isConversionUnavailable
+                                  ? "Rates"
+                                  : formatCurrency(
+                                      appliedSubtotalPreferred ?? 0,
+                                      preferredCurrency,
+                                    );
+                            const originalSubtotalLabel = isTbd
+                              ? "TBD"
+                              : formatCurrency(subtotalOriginal, item.currency);
 
                             return (
                               <SortableRow
@@ -1432,6 +1618,37 @@ export function ShoppingListApp() {
                                   const priceLabel = isTbd
                                     ? "TBD"
                                     : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
+                                  const completionLabel = isIncome
+                                    ? `Use ${item.name} as source`
+                                    : `Mark ${item.name} as completed`;
+
+                                  const completionCheckbox = (
+                                    <input
+                                      type="checkbox"
+                                      checked={item.completed}
+                                      onChange={(e) =>
+                                        void toggleItemCompleted(item, e.target.checked)
+                                      }
+                                      disabled={isDeleting || isUpdating}
+                                      className={`h-4 w-4 rounded disabled:cursor-not-allowed disabled:opacity-60 md:mx-auto ${
+                                        isIncome ? "accent-emerald-400" : "accent-cyan-400"
+                                      }`}
+                                      aria-label={completionLabel}
+                                    />
+                                  );
+
+                                  const subtotalDisplay = (
+                                    <span className="flex shrink-0 flex-col whitespace-nowrap text-right tabular-nums md:items-end">
+                                      <span className={`text-sm font-semibold ${appliedSubtotalColor}`}>
+                                        {appliedSubtotalLabel}
+                                      </span>
+                                      <span
+                                        className={`text-[11px] font-semibold ${originalSubtotalColor}`}
+                                      >
+                                        {originalSubtotalLabel}
+                                      </span>
+                                    </span>
+                                  );
 
                                   const editButton = (
                                     <button
@@ -1464,11 +1681,12 @@ export function ShoppingListApp() {
                                   if (isTallMode) {
                                     return (
                                       <div
-                                        className={`flex flex-col gap-2 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:items-center md:gap-3 ${rowTheme} ${
+                                        className={`flex flex-col gap-2 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:items-center md:gap-3 ${rowTheme} ${
                                           isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""
                                         }`}
                                       >
                                         <div className="flex min-w-0 items-center gap-3 md:contents">
+                                          {completionCheckbox}
                                           <button
                                             type="button"
                                             {...attributes}
@@ -1482,7 +1700,7 @@ export function ShoppingListApp() {
                                           </button>
                                           <span
                                             ref={(node) => setEntryTitleRef(item.id, node)}
-                                            className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-zinc-100 md:flex-none md:leading-normal"
+                                            className={`min-w-0 flex-1 break-words text-sm font-medium leading-snug md:flex-none md:leading-normal ${entryTitleColor}`}
                                           >
                                             {item.name || (
                                               <span className="italic text-zinc-500">Unnamed entry</span>
@@ -1490,20 +1708,16 @@ export function ShoppingListApp() {
                                           </span>
                                         </div>
 
-                                        <div className="flex min-w-0 items-center gap-2 pl-[2.5rem] md:contents md:pl-0">
+                                        <div className="flex min-w-0 items-center gap-2 pl-[3.25rem] md:contents md:pl-0">
                                           <span
-                                            className="hidden min-w-0 flex-1 break-words text-xs tabular-nums text-zinc-400 sm:block md:whitespace-nowrap md:text-right"
+                                            className={`hidden min-w-0 flex-1 break-words text-xs tabular-nums sm:block md:whitespace-nowrap md:text-right ${qtyPriceColor}`}
                                           >
                                             {qtyNum !== 1
                                               ? `${item.quantity} × ${priceLabel}`
                                               : `${priceLabel}`}
                                           </span>
 
-                                          <span
-                                            className={`shrink-0 whitespace-nowrap text-right text-sm font-semibold tabular-nums md:text-right ${subtotalColor}`}
-                                          >
-                                            {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
-                                          </span>
+                                          {subtotalDisplay}
 
                                           <div className="ml-auto flex shrink-0 items-center justify-end gap-1">
                                             {editButton}
@@ -1516,10 +1730,11 @@ export function ShoppingListApp() {
 
                                   return (
                                     <div
-                                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme} ${
+                                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme} ${
                                         isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""
                                       }`}
                                     >
+                                      {completionCheckbox}
                                       <button
                                         type="button"
                                         {...attributes}
@@ -1534,24 +1749,20 @@ export function ShoppingListApp() {
 
                                       <span
                                         ref={(node) => setEntryTitleRef(item.id, node)}
-                                        className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100 md:flex-none"
+                                        className={`min-w-0 flex-1 truncate text-sm font-medium md:flex-none ${entryTitleColor}`}
                                       >
                                         {item.name || (
                                           <span className="italic text-zinc-500">Unnamed entry</span>
                                         )}
                                       </span>
 
-                                      <span className="hidden whitespace-nowrap text-right text-xs tabular-nums text-zinc-400 md:block">
+                                      <span className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${qtyPriceColor}`}>
                                         {qtyNum !== 1
                                           ? `${item.quantity} × ${priceLabel}`
                                           : `${priceLabel}`}
                                       </span>
 
-                                      <span
-                                        className={`whitespace-nowrap text-sm font-semibold tabular-nums md:text-right ${subtotalColor}`}
-                                      >
-                                        {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
-                                      </span>
+                                      {subtotalDisplay}
 
                                       <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
                                         {editButton}
