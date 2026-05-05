@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DndContext,
   MouseSensor,
@@ -202,6 +202,9 @@ export function ShoppingListApp() {
   const [exchangeRatesLoading, setExchangeRatesLoading] = useState(false);
   const [exchangeRatesError, setExchangeRatesError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [entryTallModeById, setEntryTallModeById] = useState<Record<string, boolean>>({});
+  const [entryMeasureTick, setEntryMeasureTick] = useState(0);
+  const entryTitleRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   const loadLists = useCallback(async () => {
     setLoadingLists(true);
@@ -339,6 +342,73 @@ export function ShoppingListApp() {
     () => selectedList?.items.map((item) => item.id) ?? [],
     [selectedList],
   );
+
+  const selectedListEntrySignature = useMemo(
+    () =>
+      selectedList?.items
+        .map((item) => `${item.id}:${item.name}`)
+        .join("|") ?? "",
+    [selectedList],
+  );
+
+  const setEntryTitleRef = useCallback((itemId: string, node: HTMLSpanElement | null) => {
+    if (node) {
+      entryTitleRefs.current[itemId] = node;
+      return;
+    }
+
+    delete entryTitleRefs.current[itemId];
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setEntryMeasureTick((current) => current + 1);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    const itemIds = selectedListItemIds;
+    let resetFrameId = 0;
+    let measureFrameId = 0;
+
+    // Re-run detection in regular mode before deciding which entries need tall mode.
+    resetFrameId = window.requestAnimationFrame(() => {
+      setEntryTallModeById({});
+
+      measureFrameId = window.requestAnimationFrame(() => {
+        if (itemIds.length === 0) {
+          setEntryTallModeById({});
+          return;
+        }
+
+        const nextTallModeById: Record<string, boolean> = {};
+        for (const itemId of itemIds) {
+          const titleEl = entryTitleRefs.current[itemId];
+          nextTallModeById[itemId] = titleEl
+            ? titleEl.scrollWidth > titleEl.clientWidth + 1
+            : false;
+        }
+        setEntryTallModeById(nextTallModeById);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(resetFrameId);
+      window.cancelAnimationFrame(measureFrameId);
+    };
+  }, [
+    selectedListId,
+    selectedListItemIds,
+    selectedListEntrySignature,
+    entryMeasureTick,
+    editingDraft?.itemId,
+    todoEditItemId,
+  ]);
 
   const dndSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -1110,16 +1180,16 @@ export function ShoppingListApp() {
                 {/* Add item form */}
                 <div className="rounded-xl border border-white/10 bg-zinc-950/60 p-3 space-y-2">
                   {/* Row 1: name + custom amount toggle */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <input
                       value={newItem.name}
                       onChange={(event) =>
                         setNewItem((current) => ({ ...current, name: event.target.value }))
                       }
                       placeholder="Entry name"
-                      className="flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                      className="min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
                     />
-                    <label className="flex cursor-pointer select-none items-center gap-2 whitespace-nowrap text-sm text-zinc-400">
+                    <label className="flex w-full cursor-pointer select-none items-center gap-2 whitespace-nowrap text-sm text-zinc-400 sm:w-auto">
                       <input
                         type="checkbox"
                         checked={newItemCustomAmount}
@@ -1233,9 +1303,10 @@ export function ShoppingListApp() {
                             const isTbd = !item.unitPrice;
                             const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
                             const isDeleting = Boolean(deletingItems[item.id]);
-                            const isUpdating = Boolean(updatingItems[item.id]);
-                            const isThisEditing = editingDraft?.itemId === item.id;
-                            const isItemDragDisabled = dragDisabled || isDeleting || isUpdating;
+                          const isUpdating = Boolean(updatingItems[item.id]);
+                          const isThisEditing = editingDraft?.itemId === item.id;
+                          const isItemDragDisabled = dragDisabled || isDeleting || isUpdating;
+                          const isTallMode = Boolean(entryTallModeById[item.id]);
 
                             const rowTheme = item.completed
                               ? "border-white/10 bg-zinc-900/70"
@@ -1276,8 +1347,8 @@ export function ShoppingListApp() {
                                           className="w-full rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
                                         />
 
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950/70 px-2.5 py-2 text-xs text-zinc-300">
+                                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                          <label className="flex max-w-full items-center gap-2 rounded-lg border border-white/10 bg-zinc-950/70 px-2.5 py-2 text-xs text-zinc-300">
                                             <input
                                               type="checkbox"
                                               checked={editingDraft.completed}
@@ -1304,7 +1375,7 @@ export function ShoppingListApp() {
                                             className="w-16 rounded-lg border border-white/10 bg-zinc-950/80 px-2.5 py-2 text-sm text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
                                           />
 
-                                          <div className="flex flex-1 items-center gap-1">
+                                          <div className="flex min-w-0 w-full items-center gap-1 sm:w-auto sm:flex-1">
                                             <button
                                               type="button"
                                               onClick={() =>
@@ -1358,7 +1429,7 @@ export function ShoppingListApp() {
                                             </select>
                                           </div>
 
-                                          <div className="ml-auto flex gap-2">
+                                          <div className="ml-auto flex w-full justify-end gap-2 sm:w-auto">
                                             <button
                                               type="button"
                                               onClick={() => void saveEditedItem()}
@@ -1385,6 +1456,107 @@ export function ShoppingListApp() {
                                   const priceLabel = isTbd
                                     ? "TBD"
                                     : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
+
+                                  const editButton = (
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditing(item)}
+                                      disabled={isDeleting || isUpdating}
+                                      title="Edit entry"
+                                      aria-label="Edit entry"
+                                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      <PencilIcon />
+                                      <span>Edit</span>
+                                    </button>
+                                  );
+
+                                  const deleteButton = (
+                                    <button
+                                      type="button"
+                                      onClick={() => void removeItem(item.id)}
+                                      disabled={isDeleting || isUpdating}
+                                      title="Delete entry"
+                                      aria-label="Delete entry"
+                                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      <TrashIcon />
+                                      <span>Delete</span>
+                                    </button>
+                                  );
+
+                                  if (isTallMode) {
+                                    return (
+                                      <div
+                                        className={`space-y-2 rounded-xl border px-3 py-2.5 ${rowTheme} ${
+                                          isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""
+                                        }`}
+                                      >
+                                        <div className="flex min-w-0 items-center gap-3">
+                                          <input
+                                            type="checkbox"
+                                            checked={item.completed}
+                                            onChange={(e) =>
+                                              void toggleItemCompleted(item, e.target.checked)
+                                            }
+                                            disabled={isDeleting || isUpdating}
+                                            className="mx-auto h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                            aria-label={`Mark ${item.name} as completed`}
+                                          />
+                                          <button
+                                            type="button"
+                                            {...attributes}
+                                            {...listeners}
+                                            disabled={isItemDragDisabled}
+                                            className="mx-auto flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                                            title="Hold and drag to reorder"
+                                            aria-label={`Hold and drag to reorder ${item.name}`}
+                                          >
+                                            <DragHandleIcon />
+                                          </button>
+                                          <span
+                                            ref={(node) => setEntryTitleRef(item.id, node)}
+                                            className={`min-w-0 flex-1 break-words text-sm font-medium leading-snug ${
+                                              item.completed
+                                                ? "text-zinc-500 line-through"
+                                                : "text-zinc-100"
+                                            }`}
+                                          >
+                                            {item.name || (
+                                              <span className="italic text-zinc-500">Unnamed entry</span>
+                                            )}
+                                          </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 pl-[3.25rem]">
+                                          <span
+                                            className={`min-w-0 break-words text-xs tabular-nums ${
+                                              item.completed
+                                                ? "text-zinc-500 line-through"
+                                                : "text-zinc-400"
+                                            }`}
+                                          >
+                                            {qtyNum !== 1
+                                              ? `${item.quantity} × ${priceLabel}`
+                                              : `${priceLabel}`}
+                                          </span>
+
+                                          <span
+                                            className={`whitespace-nowrap text-right text-sm font-semibold tabular-nums ${
+                                              item.completed ? "line-through" : ""
+                                            } ${subtotalColor}`}
+                                          >
+                                            {isTbd ? "TBD" : formatCurrency(subtotal, item.currency)}
+                                          </span>
+
+                                          <div className="flex items-center justify-end gap-1.5">
+                                            {editButton}
+                                            {deleteButton}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
 
                                   return (
                                     <div
@@ -1415,6 +1587,7 @@ export function ShoppingListApp() {
                                       </button>
 
                                       <span
+                                        ref={(node) => setEntryTitleRef(item.id, node)}
                                         className={`min-w-0 flex-1 truncate text-sm font-medium md:flex-none ${
                                           item.completed
                                             ? "text-zinc-500 line-through"
@@ -1447,28 +1620,8 @@ export function ShoppingListApp() {
                                       </span>
 
                                       <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
-                                        <button
-                                          type="button"
-                                          onClick={() => startEditing(item)}
-                                          disabled={isDeleting || isUpdating}
-                                          title="Edit entry"
-                                          aria-label="Edit entry"
-                                          className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-0 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[4.75rem] md:px-2.5"
-                                        >
-                                          <PencilIcon />
-                                          <span className="hidden md:inline">Edit</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => void removeItem(item.id)}
-                                          disabled={isDeleting || isUpdating}
-                                          title="Delete entry"
-                                          aria-label="Delete entry"
-                                          className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-0 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 md:h-auto md:w-[5.75rem] md:px-2.5"
-                                        >
-                                          <TrashIcon />
-                                          <span className="hidden md:inline">Delete</span>
-                                        </button>
+                                        {editButton}
+                                        {deleteButton}
                                       </div>
                                     </div>
                                   );
@@ -1526,6 +1679,7 @@ export function ShoppingListApp() {
                           const isUpdating = Boolean(updatingItems[item.id]);
                           const isEditing = todoEditItemId === item.id;
                           const isItemDragDisabled = dragDisabled || isDeleting || isUpdating;
+                          const isTallMode = Boolean(entryTallModeById[item.id]);
 
                           return (
                             <SortableRow
@@ -1536,7 +1690,7 @@ export function ShoppingListApp() {
                               {({ attributes, listeners, isDragging }) => {
                                 if (isEditing) {
                                   return (
-                                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/70 px-3 py-2.5">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/70 px-3 py-2.5">
                                       <input
                                         type="checkbox"
                                         checked={item.completed}
@@ -1550,24 +1704,104 @@ export function ShoppingListApp() {
                                       <input
                                         value={todoEditName}
                                         onChange={(e) => setTodoEditName(e.target.value)}
-                                        className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+                                        className="min-w-0 w-full flex-1 rounded-lg border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none sm:w-auto"
                                       />
-                                      <button
-                                        type="button"
-                                        onClick={() => void saveTodoEntry(item)}
-                                        disabled={isUpdating}
-                                        className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={cancelTodoEditing}
-                                        disabled={isUpdating}
-                                        className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                      >
-                                        Cancel
-                                      </button>
+                                      <div className="ml-auto flex w-full justify-end gap-2 sm:w-auto">
+                                        <button
+                                          type="button"
+                                          onClick={() => void saveTodoEntry(item)}
+                                          disabled={isUpdating}
+                                          className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={cancelTodoEditing}
+                                          disabled={isUpdating}
+                                          className="rounded-lg border border-white/20 bg-zinc-800/70 px-3 py-2 text-xs font-semibold text-zinc-400 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                const editButton = (
+                                  <button
+                                    type="button"
+                                    onClick={() => startTodoEditing(item)}
+                                    disabled={isDeleting || isUpdating}
+                                    title="Edit entry"
+                                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-zinc-800/60 px-2.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <PencilIcon />
+                                    <span>Edit</span>
+                                  </button>
+                                );
+
+                                const deleteButton = (
+                                  <button
+                                    type="button"
+                                    onClick={() => void removeItem(item.id)}
+                                    disabled={isDeleting || isUpdating}
+                                    title="Delete entry"
+                                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    <TrashIcon />
+                                    <span>Delete</span>
+                                  </button>
+                                );
+
+                                if (isTallMode) {
+                                  return (
+                                    <div
+                                      className={`space-y-2 rounded-xl border px-3 py-2.5 ${
+                                        item.completed
+                                          ? "border-white/10 bg-zinc-900/70"
+                                          : "border-white/10 bg-zinc-950/40"
+                                      } ${isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""}`}
+                                    >
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={item.completed}
+                                          onChange={(e) =>
+                                            void toggleItemCompleted(item, e.target.checked)
+                                          }
+                                          disabled={isDeleting || isUpdating}
+                                          className="h-4 w-4 rounded accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                          aria-label={`Mark ${item.name} as completed`}
+                                        />
+                                        <button
+                                          type="button"
+                                          {...attributes}
+                                          {...listeners}
+                                          disabled={isItemDragDisabled}
+                                          className="flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                                          title="Hold and drag to reorder"
+                                          aria-label={`Hold and drag to reorder ${item.name}`}
+                                        >
+                                          <DragHandleIcon />
+                                        </button>
+                                        <span
+                                          ref={(node) => setEntryTitleRef(item.id, node)}
+                                          className={`min-w-0 flex-1 break-words text-sm leading-snug ${
+                                            item.completed
+                                              ? "text-zinc-500 line-through"
+                                              : "text-zinc-100"
+                                          }`}
+                                        >
+                                          {item.name || (
+                                            <span className="italic text-zinc-500">Unnamed entry</span>
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-end gap-1.5 pl-[3.25rem]">
+                                        {editButton}
+                                        {deleteButton}
+                                      </div>
                                     </div>
                                   );
                                 }
@@ -1602,6 +1836,7 @@ export function ShoppingListApp() {
                                       <DragHandleIcon />
                                     </button>
                                     <span
+                                      ref={(node) => setEntryTitleRef(item.id, node)}
                                       className={`min-w-0 flex-1 truncate text-sm ${
                                         item.completed
                                           ? "text-zinc-500 line-through"
@@ -1610,25 +1845,9 @@ export function ShoppingListApp() {
                                     >
                                       {item.name}
                                     </span>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => startTodoEditing(item)}
-                                        disabled={isDeleting || isUpdating}
-                                        title="Edit entry"
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                      >
-                                        <PencilIcon />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void removeItem(item.id)}
-                                        disabled={isDeleting || isUpdating}
-                                        title="Delete entry"
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-400/30 bg-rose-500/10 text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                      >
-                                        <TrashIcon />
-                                      </button>
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                      {editButton}
+                                      {deleteButton}
                                     </div>
                                   </div>
                                 );
