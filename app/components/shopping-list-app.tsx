@@ -482,6 +482,41 @@ export function ShoppingListApp() {
     [selectedList],
   );
 
+  const selectedEntriesTotals = useMemo(() => {
+    if (!selectedList || selectedList.type !== "budget") {
+      return { total: 0, unavailable: false, estimated: false, hasAny: false };
+    }
+
+    let total = 0;
+    let unavailable = false;
+    let estimated = false;
+    let hasAny = false;
+
+    for (const item of selectedList.items) {
+      if (!item.completed) {
+        continue;
+      }
+
+      hasAny = true;
+      if (!item.unitPrice) {
+        estimated = true;
+        continue;
+      }
+
+      const subtotal = toNumber(item.quantity) * toNumber(item.unitPrice);
+      const converted = convertSubtotal(subtotal, item.currency);
+      if (converted == null) {
+        unavailable = true;
+        continue;
+      }
+
+      // Balance convention: incomes positive, expenses negative.
+      total += -converted;
+    }
+
+    return { total, unavailable, estimated, hasAny };
+  }, [convertSubtotal, selectedList]);
+
   const budgetAppliedSubtotalsByItemId = useMemo(() => {
     const appliedSubtotals = new Map<
       string,
@@ -1243,26 +1278,55 @@ export function ShoppingListApp() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
               {selectedList.type === "budget" ? (
-                <p
-                  className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-                    selectedListTotals.unavailable
-                      ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
-                      : hasEstimatedItems
-                        ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
-                        : selectedListTotals.total < 0
-                          ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                          : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
-                  }`}
-                >
-                  {selectedListTotals.unavailable
-                    ? "Total unavailable (exchange rates needed)"
-                    : selectedListTotals.total < 0
-                      ? `Net Received: ${hasEstimatedItems ? "~" : ""}${formatCurrency(Math.abs(selectedListTotals.total), preferredCurrency)}`
-                      : `${hasEstimatedItems ? "Est. " : ""}Total: ${formatCurrency(selectedListTotals.total, preferredCurrency)}`}
-                  {!selectedListTotals.unavailable && hasEstimatedItems && (
-                    <span className="ml-1.5 text-xs opacity-70">(some prices TBD)</span>
-                  )}
-                </p>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <p
+                    className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                      selectedListTotals.unavailable
+                        ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                        : hasEstimatedItems
+                          ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
+                          : -selectedListTotals.total > 0
+                            ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                            : -selectedListTotals.total < 0
+                              ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                              : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
+                    }`}
+                  >
+                    {selectedListTotals.unavailable
+                      ? "All entries unavailable (exchange rates needed)"
+                      : `${hasEstimatedItems ? "Est. " : ""}All entries: ${formatCurrency(-selectedListTotals.total, preferredCurrency)}`}
+                    {!selectedListTotals.unavailable && hasEstimatedItems && (
+                      <span className="ml-1.5 text-xs opacity-70">(some prices TBD)</span>
+                    )}
+                  </p>
+                  <p
+                    className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                      selectedEntriesTotals.unavailable
+                        ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                        : !selectedEntriesTotals.hasAny
+                          ? "border-white/15 bg-zinc-800/60 text-zinc-300"
+                          : selectedEntriesTotals.estimated
+                            ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
+                            : selectedEntriesTotals.total > 0
+                              ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                              : selectedEntriesTotals.total < 0
+                                ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                                : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
+                    }`}
+                  >
+                    {selectedEntriesTotals.unavailable
+                      ? "Selected unavailable (exchange rates needed)"
+                      : `Selected: ${formatCurrency(selectedEntriesTotals.total, preferredCurrency)}`}
+                    {!selectedEntriesTotals.unavailable && !selectedEntriesTotals.hasAny && (
+                      <span className="ml-1.5 text-xs opacity-70">(none checked)</span>
+                    )}
+                    {!selectedEntriesTotals.unavailable &&
+                      selectedEntriesTotals.hasAny &&
+                      selectedEntriesTotals.estimated && (
+                        <span className="ml-1.5 text-xs opacity-70">(checked TBD)</span>
+                      )}
+                  </p>
+                </div>
               ) : (
                 <p className="rounded-full border border-white/15 bg-zinc-800/60 px-3 py-1 text-sm font-semibold text-zinc-300">
                   Todo List
