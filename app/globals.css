@@ -37,3 +37,7 @@ textarea {
 *::after {
   box-sizing: border-box;
 }
+
+.currency-suffix {
+  opacity: 0.65;
+}

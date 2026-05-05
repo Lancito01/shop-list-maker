@@ -21,7 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   displayCurrencies,
   entryCurrencies,
-  formatCurrency,
+  formatCurrencyParts,
   toNumber,
   type DisplayCurrency,
   type EntryCurrency,
@@ -136,6 +136,24 @@ function RefreshIcon() {
         clipRule="evenodd"
       />
     </svg>
+  );
+}
+
+function FormattedCurrency({
+  value,
+  currency,
+  className,
+}: {
+  value: number;
+  currency: EntryCurrency | DisplayCurrency;
+  className?: string;
+}) {
+  const { number, currency: code } = formatCurrencyParts(value, currency);
+  return (
+    <span className={className}>
+      {number}
+      <span className="currency-suffix">${code}</span>
+    </span>
   );
 }
 
@@ -1292,10 +1310,12 @@ export function ShoppingListApp() {
                                 Total:{" "}
                                 {listTotalsById.get(list.id)?.unavailable
                                   ? "Rate unavailable"
-                                  : formatCurrency(
-                                      listTotalsById.get(list.id)?.total ?? 0,
-                                      preferredCurrency,
-                                    )}
+                                  : (
+                                    <FormattedCurrency
+                                      value={listTotalsById.get(list.id)?.total ?? 0}
+                                      currency={preferredCurrency}
+                                    />
+                                  )}
                               </p>
                             ) : (
                               <p className="mt-0.5 whitespace-pre-line break-words text-left text-xs leading-snug text-zinc-500 sm:text-sm">
@@ -1355,55 +1375,48 @@ export function ShoppingListApp() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
               {selectedList.type === "budget" ? (
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <p
-                    className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-                      selectedListTotals.unavailable
-                        ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
-                        : hasEstimatedItems
-                          ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
-                          : -selectedListTotals.total > 0
-                            ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                            : -selectedListTotals.total < 0
-                              ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
-                              : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
-                    }`}
-                  >
-                    {selectedListTotals.unavailable
-                      ? "All entries unavailable (exchange rates needed)"
-                      : `${hasEstimatedItems ? "Est. " : ""}All entries: ${formatCurrency(-selectedListTotals.total, preferredCurrency)}`}
-                    {!selectedListTotals.unavailable && hasEstimatedItems && (
-                      <span className="ml-1.5 text-xs opacity-70">(some prices TBD)</span>
-                    )}
-                  </p>
-                  <p
-                    className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-                      selectedEntriesTotals.unavailable
-                        ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
-                        : !selectedEntriesTotals.hasAny
-                          ? "border-white/15 bg-zinc-800/60 text-zinc-300"
-                          : selectedEntriesTotals.estimated
-                            ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
-                            : selectedEntriesTotals.total > 0
-                              ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
-                              : selectedEntriesTotals.total < 0
-                                ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
-                                : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
-                    }`}
-                  >
-                    {selectedEntriesTotals.unavailable
-                      ? "Selected unavailable (exchange rates needed)"
-                      : `Selected: ${formatCurrency(selectedEntriesTotals.total, preferredCurrency)}`}
-                    {!selectedEntriesTotals.unavailable && !selectedEntriesTotals.hasAny && (
-                      <span className="ml-1.5 text-xs opacity-70">(none checked)</span>
-                    )}
-                    {!selectedEntriesTotals.unavailable &&
-                      selectedEntriesTotals.hasAny &&
-                      selectedEntriesTotals.estimated && (
-                        <span className="ml-1.5 text-xs opacity-70">(checked TBD)</span>
+                <p
+                  className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                    selectedListTotals.unavailable
+                      ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                      : hasEstimatedItems
+                        ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
+                        : -selectedListTotals.total > 0
+                          ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200"
+                          : -selectedListTotals.total < 0
+                            ? "border-rose-400/40 bg-rose-500/10 text-rose-300"
+                            : "border-cyan-400/40 bg-cyan-500/10 text-cyan-200"
+                  }`}
+                >
+                  {selectedListTotals.unavailable ? (
+                    "Net total unavailable (exchange rates needed)"
+                  ) : (
+                    <>
+                      {hasEstimatedItems ? "Est. " : ""}Net total:{" "}
+                      <FormattedCurrency
+                        value={-selectedListTotals.total}
+                        currency={preferredCurrency}
+                      />
+                      {hasEstimatedItems && (
+                        <span className="ml-1 text-xs opacity-70">(some prices TBD)</span>
                       )}
-                  </p>
-                </div>
+                      {selectedEntriesTotals.hasAny && !selectedEntriesTotals.unavailable && (
+                        <span className="ml-1 opacity-80">
+                          {" ("}
+                          {selectedEntriesTotals.estimated ? (
+                            <span className="text-xs opacity-70">TBD</span>
+                          ) : (
+                            <FormattedCurrency
+                              value={selectedEntriesTotals.total}
+                              currency={preferredCurrency}
+                            />
+                          )}
+                          {")"}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </p>
               ) : (
                 <p className="rounded-full border border-white/15 bg-zinc-800/60 px-3 py-1 text-sm font-semibold text-zinc-300">
                   Todo List
@@ -1663,20 +1676,20 @@ export function ShoppingListApp() {
                                     0,
                                   )
                                 : null;
-                            const appliedSubtotalLabel =
+                            const appliedSubtotalDisplay: ReactNode =
                               isTbd
                                 ? "TBD"
                                 : isConversionUnavailable
                                   ? "Rates"
-                                  : formatCurrency(
-                                      expenseRemainingSubtotalPreferred ??
-                                        appliedSubtotalPreferred ??
-                                        0,
-                                      preferredCurrency,
-                                    );
-                            const originalSubtotalLabel = isTbd
+                                  : (
+                                    <FormattedCurrency
+                                      value={expenseRemainingSubtotalPreferred ?? appliedSubtotalPreferred ?? 0}
+                                      currency={preferredCurrency}
+                                    />
+                                  );
+                            const originalSubtotalDisplay: ReactNode = isTbd
                               ? "TBD"
-                              : formatCurrency(subtotalOriginal, item.currency);
+                              : <FormattedCurrency value={subtotalOriginal} currency={item.currency} />;
 
                             return (
                               <SortableRow
@@ -1792,9 +1805,9 @@ export function ShoppingListApp() {
                                   }
 
                                   const qtyNum = toNumber(item.quantity);
-                                  const priceLabel = isTbd
+                                  const priceDisplay: ReactNode = isTbd
                                     ? "TBD"
-                                    : formatCurrency(Math.abs(toNumber(item.unitPrice)), item.currency);
+                                    : <FormattedCurrency value={Math.abs(toNumber(item.unitPrice))} currency={item.currency} />;
                                   const completionLabel = isIncome
                                     ? `Use ${item.name} as source`
                                     : `Mark ${item.name} as completed`;
@@ -1815,14 +1828,14 @@ export function ShoppingListApp() {
                                   );
 
                                   const subtotalDisplay = (
-                                    <span className="flex shrink-0 flex-col whitespace-nowrap text-right tabular-nums md:items-end">
+                                    <span className="flex min-w-0 flex-col text-left tabular-nums md:items-end md:text-right">
                                       <span className={`text-sm font-semibold ${appliedSubtotalColor}`}>
-                                        {appliedSubtotalLabel}
+                                        {appliedSubtotalDisplay}
                                       </span>
                                       <span
                                         className={`text-[11px] font-semibold ${originalSubtotalColor}`}
                                       >
-                                        {originalSubtotalLabel}
+                                        {originalSubtotalDisplay}
                                       </span>
                                     </span>
                                   );
@@ -1889,9 +1902,7 @@ export function ShoppingListApp() {
                                           <span
                                             className={`hidden min-w-0 flex-1 break-words text-xs tabular-nums sm:block md:whitespace-nowrap md:text-right ${qtyPriceColor}`}
                                           >
-                                            {qtyNum !== 1
-                                              ? `${item.quantity} × ${priceLabel}`
-                                              : `${priceLabel}`}
+                                            {qtyNum !== 1 ? <>{item.quantity} × {priceDisplay}</> : priceDisplay}
                                           </span>
 
                                           {subtotalDisplay}
@@ -1907,43 +1918,45 @@ export function ShoppingListApp() {
 
                                   return (
                                     <div
-                                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:gap-3 ${rowTheme} ${
+                                      className={`flex flex-col gap-2 rounded-xl border px-3 py-2.5 md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] md:items-center md:gap-3 ${rowTheme} ${
                                         isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""
                                       }`}
                                     >
-                                      {completionCheckbox}
-                                      <button
-                                        type="button"
-                                        {...attributes}
-                                        {...listeners}
-                                        disabled={isItemDragDisabled}
-                                        className="mx-auto flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
-                                        title="Hold and drag to reorder"
-                                        aria-label={`Hold and drag to reorder ${item.name}`}
-                                      >
-                                        <DragHandleIcon />
-                                      </button>
+                                      <div className="flex min-w-0 items-center gap-3 md:contents">
+                                        {completionCheckbox}
+                                        <button
+                                          type="button"
+                                          {...attributes}
+                                          {...listeners}
+                                          disabled={isItemDragDisabled}
+                                          className="mx-auto flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                                          title="Hold and drag to reorder"
+                                          aria-label={`Hold and drag to reorder ${item.name}`}
+                                        >
+                                          <DragHandleIcon />
+                                        </button>
 
-                                      <span
-                                        ref={(node) => setEntryTitleRef(item.id, node)}
-                                        className={`min-w-0 flex-1 truncate text-sm font-medium md:flex-none ${entryTitleColor}`}
-                                      >
-                                        {item.name || (
-                                          <span className="italic text-zinc-500">Unnamed entry</span>
-                                        )}
-                                      </span>
+                                        <span
+                                          ref={(node) => setEntryTitleRef(item.id, node)}
+                                          className={`min-w-0 flex-1 truncate text-sm font-medium md:flex-none ${entryTitleColor}`}
+                                        >
+                                          {item.name || (
+                                            <span className="italic text-zinc-500">Unnamed entry</span>
+                                          )}
+                                        </span>
+                                      </div>
 
-                                      <span className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${qtyPriceColor}`}>
-                                        {qtyNum !== 1
-                                          ? `${item.quantity} × ${priceLabel}`
-                                          : `${priceLabel}`}
-                                      </span>
+                                      <div className="flex min-w-0 items-center gap-2 pl-[3.25rem] md:contents md:pl-0">
+                                        <span className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${qtyPriceColor}`}>
+                                          {qtyNum !== 1 ? <>{item.quantity} × {priceDisplay}</> : priceDisplay}
+                                        </span>
 
-                                      {subtotalDisplay}
+                                        {subtotalDisplay}
 
-                                      <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
-                                        {editButton}
-                                        {deleteButton}
+                                        <div className="ml-auto flex shrink-0 items-center justify-end gap-1 md:ml-0">
+                                          {editButton}
+                                          {deleteButton}
+                                        </div>
                                       </div>
                                     </div>
                                   );
