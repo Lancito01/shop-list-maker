@@ -4,25 +4,16 @@ export type EntryCurrency = (typeof entryCurrencies)[number];
 export const displayCurrencies = ["USD", "ARS"] as const;
 export type DisplayCurrency = (typeof displayCurrencies)[number];
 
-const formatters: Record<EntryCurrency | DisplayCurrency, Intl.NumberFormat> = {
+const numberFormatters: Record<EntryCurrency | DisplayCurrency, Intl.NumberFormat> = {
   USD: new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    currencyDisplay: "code",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }),
   EUR: new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "EUR",
-    currencyDisplay: "code",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }),
   ARS: new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    currencyDisplay: "code",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }),
@@ -34,9 +25,19 @@ export function toNumber(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** Returns `{ number, currency }` parts so callers can style the currency code separately. */
+export function formatCurrencyParts(
+  value: number,
+  currency: EntryCurrency | DisplayCurrency = "USD",
+): { number: string; currency: string } {
+  return { number: numberFormatters[currency].format(value), currency };
+}
+
+/** Returns a plain string like `1,234.00$USD`. */
 export function formatCurrency(
   value: number,
   currency: EntryCurrency | DisplayCurrency = "USD",
 ): string {
-  return formatters[currency].format(value);
+  const parts = formatCurrencyParts(value, currency);
+  return `${parts.number}$${parts.currency}`;
 }
