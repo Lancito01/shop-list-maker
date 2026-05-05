@@ -36,6 +36,13 @@
       "when": 1777939983548,
       "tag": "0004_wide_swarm",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777940841240,
+      "tag": "0005_mysterious_mentallo",
+      "breakpoints": true
     }
   ]
 }

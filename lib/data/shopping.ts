@@ -23,6 +23,7 @@ export type ShoppingListRecord = {
   id: string;
   name: string;
   type: ListType;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
   items: ShoppingItemRecord[];
@@ -58,7 +59,11 @@ export async function getListsForUser(userId: string): Promise<ShoppingListRecor
     .select()
     .from(shoppingLists)
     .where(eq(shoppingLists.userId, userId))
-    .orderBy(desc(shoppingLists.updatedAt), desc(shoppingLists.createdAt));
+    .orderBy(
+      asc(shoppingLists.sortOrder),
+      desc(shoppingLists.updatedAt),
+      desc(shoppingLists.createdAt),
+    );
 
   if (listRows.length === 0) {
     return [];
@@ -83,6 +88,7 @@ export async function getListsForUser(userId: string): Promise<ShoppingListRecor
     id: list.id,
     name: list.name,
     type: list.type as ListType,
+    sortOrder: list.sortOrder,
     createdAt: toIsoString(list.createdAt),
     updatedAt: toIsoString(list.updatedAt),
     items: itemsByList.get(list.id) ?? [],
@@ -96,6 +102,13 @@ export async function createList(
 ): Promise<Omit<ShoppingListRecord, "items">> {
   const db = getDb();
   const now = new Date();
+  const [maxSortOrderRow] = await db
+    .select({
+      maxSortOrder: sql<number>`coalesce(max(${shoppingLists.sortOrder}), -1)`,
+    })
+    .from(shoppingLists)
+    .where(eq(shoppingLists.userId, userId));
+  const nextSortOrder = Number(maxSortOrderRow?.maxSortOrder ?? -1) + 1;
 
   const [list] = await db
     .insert(shoppingLists)
@@ -103,6 +116,7 @@ export async function createList(
       userId,
       name,
       type,
+      sortOrder: nextSortOrder,
       updatedAt: now,
     })
     .returning();
@@ -111,6 +125,7 @@ export async function createList(
     id: list.id,
     name: list.name,
     type: list.type as ListType,
+    sortOrder: list.sortOrder,
     createdAt: toIsoString(list.createdAt),
     updatedAt: toIsoString(list.updatedAt),
   };
@@ -294,6 +309,49 @@ export async function reorderItems(
     .update(shoppingLists)
     .set({ updatedAt: now })
     .where(eq(shoppingLists.id, listId));
+
+  return true;
+}
+
+export async function reorderLists(
+  userId: string,
+  listIds: string[],
+): Promise<boolean> {
+  const db = getDb();
+
+  const ownedLists = await db
+    .select({ id: shoppingLists.id })
+    .from(shoppingLists)
+    .where(eq(shoppingLists.userId, userId));
+
+  if (ownedLists.length === 0) {
+    return false;
+  }
+
+  if (listIds.length !== ownedLists.length) {
+    return false;
+  }
+
+  const ownedListIds = new Set(ownedLists.map((list) => list.id));
+  const providedListIds = new Set(listIds);
+
+  if (ownedListIds.size !== providedListIds.size) {
+    return false;
+  }
+
+  for (const listId of listIds) {
+    if (!ownedListIds.has(listId)) {
+      return false;
+    }
+  }
+
+  const now = new Date();
+  for (const [index, listId] of listIds.entries()) {
+    await db
+      .update(shoppingLists)
+      .set({ sortOrder: index, updatedAt: now })
+      .where(and(eq(shoppingLists.id, listId), eq(shoppingLists.userId, userId)));
+  }
 
   return true;
 }

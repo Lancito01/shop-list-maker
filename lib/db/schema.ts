@@ -38,6 +38,7 @@ export const shoppingLists = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 120 }).notNull(),
     type: varchar("type", { length: 16 }).default("budget").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -47,6 +48,7 @@ export const shoppingLists = pgTable(
   },
   (table) => [
     index("shopping_lists_user_id_idx").on(table.userId),
+    index("shopping_lists_user_sort_order_idx").on(table.userId, table.sortOrder),
     index("shopping_lists_updated_at_idx").on(table.updatedAt),
   ],
 );

@@ -59,4 +59,8 @@ export const reorderItemsSchema = z.object({
   itemIds: z.array(z.string().uuid()).min(1),
 });
 
+export const reorderListsSchema = z.object({
+  listIds: z.array(z.string().uuid()).min(1),
+});
+
 export const idParamSchema = z.string().uuid();

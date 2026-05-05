@@ -122,6 +122,17 @@ function DragHandleIcon() {
   );
 }
 
+function RefreshIcon() {
+  return (
+    <span
+      aria-hidden="true"
+      className="font-mono text-[0.8rem] font-semibold leading-none"
+    >
+      &lt;&gt;
+    </span>
+  );
+}
+
 type SortableRowProps = {
   id: string;
   disabled?: boolean;
@@ -170,6 +181,8 @@ export function ShoppingListApp() {
   const [renamingLists, setRenamingLists] = useState<PendingMap>({});
   const [editingDraft, setEditingDraft] = useState<EditDraft | null>(null);
   const [reorderingItems, setReorderingItems] = useState(false);
+  const [reorderingLists, setReorderingLists] = useState(false);
+  const [refreshingLists, setRefreshingLists] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<DisplayCurrency>(() => {
     if (typeof window === "undefined") {
       return "USD";
@@ -297,10 +310,23 @@ export function ShoppingListApp() {
     window.localStorage.setItem("preferred-total-currency", preferredCurrency);
   }, [preferredCurrency]);
 
+  const refreshFromServer = useCallback(async () => {
+    setRefreshingLists(true);
+    setErrorMessage(null);
+
+    try {
+      await Promise.all([loadLists(), loadExchangeRates()]);
+    } finally {
+      setRefreshingLists(false);
+    }
+  }, [loadExchangeRates, loadLists]);
+
   const selectedList = useMemo(
     () => lists.find((list) => list.id === selectedListId) ?? null,
     [lists, selectedListId],
   );
+
+  const listIds = useMemo(() => lists.map((list) => list.id), [lists]);
 
   const selectedListItemIds = useMemo(
     () => selectedList?.items.map((item) => item.id) ?? [],
@@ -315,6 +341,7 @@ export function ShoppingListApp() {
   );
 
   const dragDisabled = reorderingItems || savingItem || Boolean(editingDraft) || Boolean(todoEditItemId);
+  const listDragDisabled = reorderingLists || creatingList || loadingLists || refreshingLists;
 
   const convertSubtotal = useCallback(
     (subtotal: number, entryCurrency: EntryCurrency): number | null => {
@@ -676,6 +703,51 @@ export function ShoppingListApp() {
     }
   }
 
+  async function persistReorderedLists(listIds: string[]) {
+    const response = await fetch("/api/lists/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listIds }),
+    });
+    const payload = (await response.json()) as MutationErrorResponse;
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Unable to reorder lists.");
+    }
+  }
+
+  async function handleListsDragEnd(event: DragEndEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : null;
+    if (!overId || activeId === overId) {
+      return;
+    }
+
+    const oldIndex = lists.findIndex((list) => list.id === activeId);
+    const newIndex = lists.findIndex((list) => list.id === overId);
+    if (oldIndex < 0 || newIndex < 0) {
+      return;
+    }
+
+    const reorderedLists = arrayMove(lists, oldIndex, newIndex).map((list, index) => ({
+      ...list,
+      sortOrder: index,
+    }));
+
+    setLists(reorderedLists);
+    setReorderingLists(true);
+    setErrorMessage(null);
+
+    try {
+      await persistReorderedLists(reorderedLists.map((list) => list.id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to reorder lists.";
+      setErrorMessage(message);
+      await loadLists();
+    } finally {
+      setReorderingLists(false);
+    }
+  }
+
   async function handleEntriesDragEnd(event: DragEndEvent) {
     if (!selectedList) {
       return;
@@ -799,13 +871,25 @@ export function ShoppingListApp() {
     <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
       <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-100">Your Lists</h2>
-          <label className="flex items-center gap-2 text-xs text-zinc-400">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-zinc-100">Your Lists</h2>
+            <button
+              type="button"
+              onClick={() => void refreshFromServer()}
+              disabled={refreshingLists || loadingLists}
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-zinc-800/60 px-2 py-1 text-sm font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Fetch latest lists from the online database"
+            >
+              <RefreshIcon />
+              <span>{refreshingLists ? "Refreshing..." : "Refresh"}</span>
+            </button>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-zinc-400">
             Totals in
             <select
               value={preferredCurrency}
               onChange={(event) => setPreferredCurrency(event.target.value as DisplayCurrency)}
-              className="rounded-md border border-white/15 bg-zinc-950/80 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
+              className="rounded-md border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
             >
               {displayCurrencies.map((currency) => (
                 <option key={currency} value={currency}>
@@ -842,89 +926,126 @@ export function ShoppingListApp() {
         </div>
 
         <div className="mt-4 space-y-2">
-          {loadingLists && <p className="text-sm text-zinc-400">Loading lists...</p>}
+          {loadingLists && <p className="text-base text-zinc-400">Loading lists...</p>}
           {!loadingLists && lists.length === 0 && (
-            <p className="text-sm text-zinc-400">Create your first list.</p>
+            <p className="text-base text-zinc-400">Create your first list.</p>
           )}
-          {lists.map((list) => {
-            const active = list.id === selectedListId;
-            const isDeleting = Boolean(deletingLists[list.id]);
-            const isRenaming = Boolean(renamingLists[list.id]);
-            return (
-              <div
-                key={list.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  setSelectedListId(list.id);
-                  setEditingDraft(null);
-                  setTodoEditItemId(null);
-                  setTodoEditName("");
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setSelectedListId(list.id);
-                    setEditingDraft(null);
-                    setTodoEditItemId(null);
-                    setTodoEditName("");
-                  }
-                }}
-                className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
-                  active
-                    ? "border-cyan-400/50 bg-zinc-800/80 shadow-lg shadow-cyan-950/30"
-                    : "border-white/10 bg-zinc-900/70 hover:bg-zinc-800/80"
-                }`}
-              >
-                <div className="min-w-0 cursor-pointer">
-                  <p className="truncate text-left text-sm font-medium text-zinc-100">
-                    {list.name}
-                  </p>
-                  {list.type === "budget" ? (
-                    <p className="truncate text-left text-xs text-zinc-500">
-                      Total:{" "}
-                      {listTotalsById.get(list.id)?.unavailable
-                        ? "Rate unavailable"
-                        : formatCurrency(
-                            listTotalsById.get(list.id)?.total ?? 0,
-                            preferredCurrency,
-                          )}
-                    </p>
-                  ) : (
-                    <p className="truncate text-left text-xs text-zinc-500">Todo list</p>
-                  )}
-                </div>
-                <div className="ml-2 flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void renameList(list.id, list.name);
-                    }}
-                    disabled={isRenaming || isDeleting}
-                    title="Rename list"
-                    className="flex h-7 items-center gap-1 rounded-md border border-white/15 bg-zinc-800/60 px-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <PencilIcon />
-                    <span className="hidden md:inline">
-                      {isRenaming ? "Saving..." : "Rename"}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void removeList(list.id);
-                    }}
-                    disabled={isDeleting || isRenaming}
-                    className="rounded px-2 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {lists.length > 0 && (
+            <DndContext
+              sensors={dndSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(event) => {
+                void handleListsDragEnd(event);
+              }}
+            >
+              <SortableContext items={listIds} strategy={verticalListSortingStrategy}>
+                {lists.map((list) => {
+                  const active = list.id === selectedListId;
+                  const isDeleting = Boolean(deletingLists[list.id]);
+                  const isRenaming = Boolean(renamingLists[list.id]);
+                  const isListDragDisabled = listDragDisabled || isDeleting || isRenaming;
+
+                  return (
+                    <SortableRow
+                      key={list.id}
+                      id={list.id}
+                      disabled={isListDragDisabled}
+                    >
+                      {({ attributes, listeners, isDragging }) => (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            setSelectedListId(list.id);
+                            setEditingDraft(null);
+                            setTodoEditItemId(null);
+                            setTodoEditName("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedListId(list.id);
+                              setEditingDraft(null);
+                              setTodoEditItemId(null);
+                              setTodoEditName("");
+                            }
+                          }}
+                          className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
+                            active
+                              ? "border-cyan-400/50 bg-zinc-800/80 shadow-lg shadow-cyan-950/30"
+                              : "border-white/10 bg-zinc-900/70 hover:bg-zinc-800/80"
+                          } ${isDragging ? "ring-1 ring-cyan-400/40 opacity-90" : ""}`}
+                        >
+                          <div className="mr-2">
+                            <button
+                              type="button"
+                              {...attributes}
+                              {...listeners}
+                              onClick={(event) => event.stopPropagation()}
+                              disabled={isListDragDisabled}
+                              className="flex h-8 w-8 touch-none cursor-grab items-center justify-center rounded-lg border border-white/15 bg-zinc-800/60 text-zinc-300 transition hover:bg-zinc-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                              title="Hold and drag to reorder list"
+                              aria-label={`Hold and drag to reorder ${list.name}`}
+                            >
+                              <DragHandleIcon />
+                            </button>
+                          </div>
+                          <div className="min-w-0 flex-1 cursor-pointer">
+                            <p className="truncate text-left text-base font-medium text-zinc-100">
+                              {list.name}
+                            </p>
+                            {list.type === "budget" ? (
+                              <p className="truncate text-left text-sm text-zinc-500">
+                                Total:{" "}
+                                {listTotalsById.get(list.id)?.unavailable
+                                  ? "Rate unavailable"
+                                  : formatCurrency(
+                                      listTotalsById.get(list.id)?.total ?? 0,
+                                      preferredCurrency,
+                                    )}
+                              </p>
+                            ) : (
+                              <p className="truncate text-left text-sm text-zinc-500">
+                                Todo list
+                              </p>
+                            )}
+                          </div>
+                          <div className="ml-2 flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void renameList(list.id, list.name);
+                              }}
+                              disabled={isRenaming || isDeleting}
+                              title="Rename list"
+                              className="flex h-7 items-center gap-1 rounded-md border border-white/15 bg-zinc-800/60 px-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <PencilIcon />
+                              <span className="hidden md:inline">
+                                {isRenaming ? "Saving..." : "Rename"}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void removeList(list.id);
+                              }}
+                              disabled={isDeleting || isRenaming}
+                              className="rounded px-2 py-1 text-sm font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </SortableRow>
+                  );
+                })}
+              </SortableContext>
+            </DndContext>
+          )}
         </div>
       </aside>
 
