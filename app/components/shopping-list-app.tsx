@@ -1160,26 +1160,28 @@ export function ShoppingListApp() {
     <div className="flex flex-col gap-6">
       <aside className="w-full rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
         <div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-semibold text-zinc-100">Your Lists</h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold leading-tight text-zinc-100 sm:text-xl">
+                Your Lists
+              </h2>
               <button
                 type="button"
                 onClick={() => void refreshFromServer()}
                 disabled={refreshingLists || loadingLists}
-                className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-zinc-800/60 px-2 py-1 text-sm font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-zinc-800/60 px-2 py-1 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                 title="Fetch latest lists from the online database"
               >
                 <RefreshIcon />
                 <span>{refreshingLists ? "Refreshing..." : "Refresh"}</span>
               </button>
             </div>
-            <label className="flex items-center gap-2 text-sm text-zinc-400">
+            <label className="flex w-full items-center gap-2 text-xs text-zinc-400 sm:w-auto sm:text-sm">
               Totals in
               <select
                 value={preferredCurrency}
                 onChange={(event) => setPreferredCurrency(event.target.value as DisplayCurrency)}
-                className="rounded-md border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
+                className="rounded-md border border-white/15 bg-zinc-950/80 px-2 py-1 text-xs text-zinc-200 focus:border-cyan-400/60 focus:outline-none sm:text-sm"
               >
                 {displayCurrencies.map((currency) => (
                   <option key={currency} value={currency}>
@@ -1261,7 +1263,7 @@ export function ShoppingListApp() {
                               setTodoEditName("");
                             }
                           }}
-                          className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
+                          className={`flex cursor-pointer items-start justify-between rounded-md border px-3 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 sm:items-center ${
                             active
                               ? "border-cyan-400/50 bg-zinc-800/80 shadow-lg shadow-cyan-950/30"
                               : "border-white/10 bg-zinc-900/70 hover:bg-zinc-800/80"
@@ -1282,11 +1284,11 @@ export function ShoppingListApp() {
                             </button>
                           </div>
                           <div className="min-w-0 flex-1 cursor-pointer">
-                            <p className="truncate text-left text-base font-medium text-zinc-100">
+                            <p className="whitespace-pre-line break-words text-left text-sm font-medium leading-snug text-zinc-100 sm:text-base">
                               {list.name}
                             </p>
                             {list.type === "budget" ? (
-                              <p className="truncate text-left text-sm text-zinc-500">
+                              <p className="mt-0.5 whitespace-pre-line break-words text-left text-xs leading-snug text-zinc-500 sm:text-sm">
                                 Total:{" "}
                                 {listTotalsById.get(list.id)?.unavailable
                                   ? "Rate unavailable"
@@ -1296,7 +1298,7 @@ export function ShoppingListApp() {
                                     )}
                               </p>
                             ) : (
-                              <p className="truncate text-left text-sm text-zinc-500">
+                              <p className="mt-0.5 whitespace-pre-line break-words text-left text-xs leading-snug text-zinc-500 sm:text-sm">
                                 Todo list
                               </p>
                             )}
@@ -1354,18 +1356,6 @@ export function ShoppingListApp() {
               <h2 className="text-xl font-semibold text-zinc-100">{selectedList.name}</h2>
               {selectedList.type === "budget" ? (
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void setAllEntriesCompleted(!selectedListAllEntriesChecked)}
-                    disabled={checkAllEntriesDisabled}
-                    className="rounded-full border border-white/20 bg-zinc-800/70 px-3 py-1 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {bulkUpdatingEntries
-                      ? "Updating..."
-                      : selectedListAllEntriesChecked
-                        ? "Uncheck All Entries"
-                        : "Check All Entries"}
-                  </button>
                   <p
                     className={`rounded-full border px-3 py-1 text-sm font-semibold ${
                       selectedListTotals.unavailable
@@ -1541,6 +1531,20 @@ export function ShoppingListApp() {
                   )}
                   {selectedList.items.length > 0 && (
                     <>
+                      <div className="flex items-center justify-end px-1">
+                        <button
+                          type="button"
+                          onClick={() => void setAllEntriesCompleted(!selectedListAllEntriesChecked)}
+                          disabled={checkAllEntriesDisabled}
+                          className="rounded-md border border-white/20 bg-zinc-800/60 px-2 py-1 text-[11px] font-semibold text-zinc-200 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {bulkUpdatingEntries
+                            ? "Updating..."
+                            : selectedListAllEntriesChecked
+                              ? "Uncheck all"
+                              : "Check all"}
+                        </button>
+                      </div>
                       <div className="hidden md:grid md:grid-cols-[2rem_2rem_minmax(0,1fr)_8.5rem_8.5rem_11rem] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
                         <span className="text-center">Check</span>
                         <span className="text-center">Move</span>
