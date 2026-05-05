@@ -1675,7 +1675,7 @@ export function ShoppingListApp() {
                                     0,
                                   )
                                 : null;
-                            const appliedSubtotalLabel: ReactNode =
+                            const appliedSubtotalDisplay: ReactNode =
                               isTbd
                                 ? "TBD"
                                 : isConversionUnavailable
@@ -1686,7 +1686,7 @@ export function ShoppingListApp() {
                                       currency={preferredCurrency}
                                     />
                                   );
-                            const originalSubtotalLabel: ReactNode = isTbd
+                            const originalSubtotalDisplay: ReactNode = isTbd
                               ? "TBD"
                               : <FormattedCurrency value={subtotalOriginal} currency={item.currency} />;
 
@@ -1804,7 +1804,7 @@ export function ShoppingListApp() {
                                   }
 
                                   const qtyNum = toNumber(item.quantity);
-                                  const priceLabel: ReactNode = isTbd
+                                  const priceDisplay: ReactNode = isTbd
                                     ? "TBD"
                                     : <FormattedCurrency value={Math.abs(toNumber(item.unitPrice))} currency={item.currency} />;
                                   const completionLabel = isIncome
@@ -1829,12 +1829,12 @@ export function ShoppingListApp() {
                                   const subtotalDisplay = (
                                     <span className="flex min-w-0 flex-col text-left tabular-nums md:items-end md:text-right">
                                       <span className={`text-sm font-semibold ${appliedSubtotalColor}`}>
-                                        {appliedSubtotalLabel}
+                                        {appliedSubtotalDisplay}
                                       </span>
                                       <span
                                         className={`text-[11px] font-semibold ${originalSubtotalColor}`}
                                       >
-                                        {originalSubtotalLabel}
+                                        {originalSubtotalDisplay}
                                       </span>
                                     </span>
                                   );
@@ -1901,7 +1901,7 @@ export function ShoppingListApp() {
                                           <span
                                             className={`hidden min-w-0 flex-1 break-words text-xs tabular-nums sm:block md:whitespace-nowrap md:text-right ${qtyPriceColor}`}
                                           >
-                                            {qtyNum !== 1 ? <>{item.quantity} × {priceLabel}</> : priceLabel}
+                                            {qtyNum !== 1 ? <>{item.quantity} × {priceDisplay}</> : priceDisplay}
                                           </span>
 
                                           {subtotalDisplay}
@@ -1947,7 +1947,7 @@ export function ShoppingListApp() {
 
                                       <div className="flex min-w-0 items-center gap-2 pl-[3.25rem] md:contents md:pl-0">
                                         <span className={`hidden whitespace-nowrap text-right text-xs tabular-nums md:block ${qtyPriceColor}`}>
-                                          {qtyNum !== 1 ? <>{item.quantity} × {priceLabel}</> : priceLabel}
+                                          {qtyNum !== 1 ? <>{item.quantity} × {priceDisplay}</> : priceDisplay}
                                         </span>
 
                                         {subtotalDisplay}
