@@ -870,62 +870,64 @@ export function ShoppingListApp() {
   return (
     <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
       <aside className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/30 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold text-zinc-100">Your Lists</h2>
+        <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-3 border-b border-white/10 bg-zinc-900/95 px-4 py-4 backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold text-zinc-100">Your Lists</h2>
+              <button
+                type="button"
+                onClick={() => void refreshFromServer()}
+                disabled={refreshingLists || loadingLists}
+                className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-zinc-800/60 px-2 py-1 text-sm font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Fetch latest lists from the online database"
+              >
+                <RefreshIcon />
+                <span>{refreshingLists ? "Refreshing..." : "Refresh"}</span>
+              </button>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-zinc-400">
+              Totals in
+              <select
+                value={preferredCurrency}
+                onChange={(event) => setPreferredCurrency(event.target.value as DisplayCurrency)}
+                className="rounded-md border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
+              >
+                {displayCurrencies.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <input
+              value={newListName}
+              onChange={(event) => setNewListName(event.target.value)}
+              placeholder="New list name"
+              className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
+            />
+            <select
+              value={newListType}
+              onChange={(event) => setNewListType(event.target.value as ListType)}
+              className="rounded-xl border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
+            >
+              <option value="budget">Budget</option>
+              <option value="todo">Todo</option>
+            </select>
             <button
               type="button"
-              onClick={() => void refreshFromServer()}
-              disabled={refreshingLists || loadingLists}
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-zinc-800/60 px-2 py-1 text-sm font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
-              title="Fetch latest lists from the online database"
+              onClick={() => void createList()}
+              disabled={creatingList}
+              className="rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <RefreshIcon />
-              <span>{refreshingLists ? "Refreshing..." : "Refresh"}</span>
+              Add
             </button>
           </div>
-          <label className="flex items-center gap-2 text-sm text-zinc-400">
-            Totals in
-            <select
-              value={preferredCurrency}
-              onChange={(event) => setPreferredCurrency(event.target.value as DisplayCurrency)}
-              className="rounded-md border border-white/15 bg-zinc-950/80 px-2 py-1 text-sm text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
-            >
-              {displayCurrencies.map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <input
-            value={newListName}
-            onChange={(event) => setNewListName(event.target.value)}
-            placeholder="New list name"
-            className="w-full rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-cyan-400/60 focus:outline-none"
-          />
-          <select
-            value={newListType}
-            onChange={(event) => setNewListType(event.target.value as ListType)}
-            className="rounded-xl border border-white/10 bg-zinc-950/80 px-2 py-2 text-sm text-zinc-200 focus:border-cyan-400/60 focus:outline-none"
-          >
-            <option value="budget">Budget</option>
-            <option value="todo">Todo</option>
-          </select>
-          <button
-            type="button"
-            onClick={() => void createList()}
-            disabled={creatingList}
-            className="rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-cyan-900/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Add
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-2">
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
           {loadingLists && <p className="text-base text-zinc-400">Loading lists...</p>}
           {!loadingLists && lists.length === 0 && (
             <p className="text-base text-zinc-400">Create your first list.</p>
@@ -991,7 +993,7 @@ export function ShoppingListApp() {
                             </button>
                           </div>
                           <div className="min-w-0 flex-1 cursor-pointer">
-                            <p className="truncate text-left text-base font-medium text-zinc-100">
+                            <p className="text-left text-base font-medium leading-tight break-words text-zinc-100">
                               {list.name}
                             </p>
                             {list.type === "budget" ? (
