@@ -158,6 +158,7 @@ function FormattedCurrency({
 }
 
 type SortableRowProps = {
+  id: string;
   disabled?: boolean;
   children: (drag: {
     attributes: ReturnType<typeof useSortable>["attributes"];
